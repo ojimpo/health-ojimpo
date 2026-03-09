@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
@@ -14,6 +15,9 @@ from ..sources.registry import get_adapter
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
+
+# In-memory storage for app open timestamps (source -> timestamp)
+_app_open_times: dict[str, datetime] = {}
 
 
 class WebhookEntry(BaseModel):
@@ -30,6 +34,8 @@ class WebhookPayload(BaseModel):
     minutes: float | None = None
     # バッチ送信用
     entries: list[WebhookEntry] | None = None
+    # app open/close 用
+    action: str | None = None
 
 
 def _verify_webhook_token(authorization: str | None):
@@ -98,12 +104,31 @@ async def receive_webhook(
             results.append(result)
         return {"status": "stored", "count": len(results), "results": results}
 
+    # app open/close（iOS Shortcut用）
+    if body.source and body.action:
+        if body.action == "open":
+            _app_open_times[body.source] = datetime.now(timezone.utc)
+            logger.info(f"App open recorded: {body.source}")
+            return {"status": "recorded", "source": body.source, "action": "open"}
+        elif body.action == "close":
+            logger.info(f"App close received: {body.source}")
+            start = _app_open_times.pop(body.source, None)
+            if not start:
+                logger.info(f"App close skipped (no open): {body.source}")
+                return {"status": "skipped", "source": body.source, "reason": "no open event"}
+            elapsed = (datetime.now(timezone.utc) - start).total_seconds() / 60.0
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            result = await _store_one(body.source, today, round(elapsed, 1))
+            return {"status": "stored", **result, "elapsed_minutes": round(elapsed, 1)}
+        else:
+            raise HTTPException(400, f"Unknown action: {body.action}. Use 'open' or 'close'.")
+
     # 単一送信
     if body.source and body.date is not None and body.minutes is not None:
         result = await _store_one(body.source, body.date, body.minutes)
         return {"status": "stored", **result}
 
-    raise HTTPException(400, "Provide source/date/minutes or entries[]")
+    raise HTTPException(400, "Provide source/date/minutes, entries[], or source/action")
 
 
 @router.get(
