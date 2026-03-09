@@ -1,0 +1,38 @@
+services:
+  backend:
+    build: ./backend
+    container_name: health-backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8400:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - LASTFM_API_KEY=${LASTFM_API_KEY}
+      - LASTFM_USER=${LASTFM_USER}
+      - DATABASE_PATH=/app/data/health.db
+      - FETCH_INTERVAL_HOURS=${FETCH_INTERVAL_HOURS:-6}
+      # Phase 2
+      - OURA_PERSONAL_ACCESS_TOKEN=${OURA_PERSONAL_ACCESS_TOKEN:-}
+      - INTERVALS_API_KEY=${INTERVALS_API_KEY:-}
+      - INTERVALS_ATHLETE_ID=${INTERVALS_ATHLETE_ID:-}
+      - KASHIDASHI_BASE_URL=${KASHIDASHI_BASE_URL:-}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+      - STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID:-}
+      - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    container_name: health-frontend
+    restart: unless-stopped
+    ports:
+      - "8401:80"
+    depends_on:
+      - backend

@@ -1,0 +1,14 @@
+import { Routes, Route } from 'react-router-dom'
+import DashboardPage from './pages/DashboardPage'
+import SharedViewPage from './pages/SharedViewPage'
+import SettingsPage from './pages/SettingsPage'
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<DashboardPage />} />
+      <Route path="/shared/:token" element={<SharedViewPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
+    </Routes>
+  )
+}

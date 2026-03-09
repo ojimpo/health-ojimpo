@@ -1,0 +1,12 @@
+.container {
+  border-radius: 12px;
+  padding: 16px 24px;
+  margin-bottom: 28px;
+  border: 1px solid;
+}
+
+.text {
+  font-size: 14px;
+  line-height: 1.8;
+  font-family: var(--font-mono);
+}

@@ -1,0 +1,8 @@
+.container {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 24px 16px 16px 0;
+  margin-bottom: 16px;
+  animation: fadeInUp 0.5s ease-out 0.2s both;
+}

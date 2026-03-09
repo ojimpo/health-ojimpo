@@ -1,0 +1,58 @@
+:root {
+  /* Background */
+  --bg-primary: #07080F;
+  --bg-critical: #0A0000;
+  --bg-card: rgba(255, 255, 255, 0.02);
+  --bg-card-hover: rgba(255, 255, 255, 0.04);
+
+  /* Text */
+  --text-primary: #E0E0E0;
+  --text-muted: rgba(255, 255, 255, 0.35);
+  --text-subtle: rgba(255, 255, 255, 0.5);
+
+  /* Activity category colors */
+  --color-music: #00F0FF;
+  --color-exercise: #FF3366;
+  --color-reading: #ADFF2F;
+  --color-movie: #FF9500;
+  --color-sns: #BD93F9;
+  --color-coding: #50FA7B;
+  --color-calendar: #FFB86C;
+
+  /* State category colors */
+  --color-sleep: #BD93F9;
+  --color-readiness: #00F0FF;
+  --color-stress: #FF3366;
+  --color-weight: #F8F8F2;
+
+  /* Status colors */
+  --color-normal: #50FA7B;
+  --color-caution: #FFB86C;
+  --color-critical: #FF1744;
+  --color-rich: #00F0FF;
+  --color-moderate: #FFB86C;
+  --color-low: #FF3366;
+
+  /* Accent */
+  --cyan: #00F0FF;
+  --pink: #FF3366;
+  --green: #50FA7B;
+  --orange: #FFB86C;
+  --purple: #BD93F9;
+  --red: #FF1744;
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+
+  /* Fonts */
+  --font-heading: 'Orbitron', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Grid */
+  --grid-color: rgba(255, 255, 255, 0.03);
+}

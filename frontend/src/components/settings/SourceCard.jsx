@@ -1,0 +1,184 @@
+import { useState } from 'react'
+import ToggleSwitch from '../common/ToggleSwitch'
+import styles from './SourceCard.module.css'
+
+const phaseColors = {
+  mvp: '#00F0FF',
+  phase2: '#FFB86C',
+  phase3: '#BD93F9',
+}
+
+const phaseLabels = {
+  mvp: 'MVP',
+  phase2: 'PHASE 2',
+  phase3: 'PHASE 3',
+}
+
+export default function SourceCard({ source, onUpdate, delay = 0 }) {
+  const [expanded, setExpanded] = useState(false)
+  const isActive = source.status === 'active'
+  const phaseColor = phaseColors[source.phase] || '#00F0FF'
+
+  const handleToggle = (field, value) => {
+    onUpdate?.(source.id, { [field]: value })
+  }
+
+  return (
+    <div
+      className={`${styles.card} ${isActive ? styles.active : styles.comingSoon}`}
+      style={{
+        borderColor: isActive ? `${source.color}30` : undefined,
+        animation: `fadeInUp 0.4s ease-out ${delay}s both`,
+      }}
+    >
+      <div className={styles.header} onClick={() => isActive && setExpanded(!expanded)}>
+        <div className={styles.headerLeft}>
+          <span className={styles.icon}>{source.icon}</span>
+          <span className={styles.name}>{source.name}</span>
+          <span
+            className={styles.phaseBadge}
+            style={{ borderColor: `${phaseColor}40`, color: phaseColor }}
+          >
+            {phaseLabels[source.phase]}
+          </span>
+          {!isActive && source.phase === 'phase2' && (
+            <a
+              href={`/api/oauth/${source.id}/authorize`}
+              className={styles.connectBtn}
+              style={{ borderColor: `${source.color}60`, color: source.color }}
+              onClick={e => e.stopPropagation()}
+            >
+              接続する
+            </a>
+          )}
+          {!isActive && source.phase !== 'phase2' && <span className={styles.comingSoonLabel}>Coming Soon</span>}
+        </div>
+        <div className={styles.headerRight}>
+          <div className={styles.toggleGroup}>
+            <ToggleSwitch
+              label="本人"
+              checked={source.show_personal}
+              onChange={v => handleToggle('show_personal', v)}
+              color={source.color}
+              disabled={!isActive}
+            />
+            <ToggleSwitch
+              label="共有"
+              checked={source.show_shared}
+              onChange={v => handleToggle('show_shared', v)}
+              color={source.color}
+              disabled={!isActive}
+            />
+          </div>
+          {isActive && (
+            <span className={`${styles.expandIcon} ${expanded ? styles.expanded : ''}`}>▼</span>
+          )}
+        </div>
+      </div>
+
+      {expanded && isActive && (
+        <div className={styles.panel}>
+          {/* Period & Base Value */}
+          <div className={styles.section}>
+            <div className={styles.sectionLabel}>集計期間 & 基準値</div>
+            <div className={styles.row}>
+              <div className={styles.inputGroup}>
+                <span className={styles.inputLabel}>期間 (日)</span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  value={source.aggregation_period}
+                  readOnly
+                  style={{ width: 60 }}
+                />
+              </div>
+              <div className={styles.inputGroup}>
+                <span className={styles.inputLabel}>基準値</span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  value={source.base_value}
+                  readOnly
+                  style={{ color: source.color }}
+                />
+              </div>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 16 }}>
+                {source.base_unit}
+              </span>
+            </div>
+          </div>
+
+          {/* Classification & Type */}
+          <div className={styles.section}>
+            <div className={styles.sectionLabel}>分類</div>
+            <div className={styles.row} style={{ gap: 24 }}>
+              <div>
+                <div className={styles.inputLabel} style={{ marginBottom: 6 }}>指標分類</div>
+                <div className={styles.classButtons}>
+                  {['baseline', 'event', 'both'].map(c => (
+                    <button
+                      key={c}
+                      className={`${styles.classBtn} ${source.classification === c ? styles.selected : ''}`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className={styles.inputLabel} style={{ marginBottom: 6 }}>表示タイプ</div>
+                <div className={styles.classButtons}>
+                  {['activity', 'state'].map(t => (
+                    <button
+                      key={t}
+                      className={`${styles.classBtn} ${source.display_type === t ? styles.selected : ''}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Spontaneity coefficient */}
+          <div className={styles.section}>
+            <div className={styles.sectionLabel}>自発性係数</div>
+            <div className={styles.slider}>
+              <input
+                className={styles.sliderInput}
+                type="range"
+                min="0"
+                max="1.5"
+                step="0.1"
+                value={source.spontaneity_coefficient}
+                readOnly
+              />
+              <span className={styles.sliderValue} style={{ color: source.color }}>
+                {source.spontaneity_coefficient}
+              </span>
+            </div>
+          </div>
+
+          {/* Baseline history */}
+          {source.baseline_history && source.baseline_history.length > 0 && (
+            <div className={styles.section}>
+              <div className={styles.sectionLabel}>基準値履歴</div>
+              {source.baseline_history.map((h, i) => (
+                <div key={i} className={styles.historyItem}>
+                  <span className={styles.historyDate}>{h.effective_from}〜</span>
+                  <span className={styles.historyValue} style={{ color: source.color }}>
+                    {h.base_value} {h.base_unit}
+                  </span>
+                  {h.memo && <span className={styles.historyMemo}>{h.memo}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button className={styles.addBtn}>+ 新しい基準値を追加</button>
+        </div>
+      )}
+    </div>
+  )
+}
