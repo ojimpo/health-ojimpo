@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { healthStatusConfig, culturalStatusConfig } from '../constants/statusConfig'
 import Header from '../components/common/Header'
@@ -23,7 +23,7 @@ export default function SharedViewPage() {
   if (loading) {
     return (
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
-        <Header label="SHARED VIEW" subtitle="共有ビュー" />
+        <Header label="CULTURAL HEALTH DASHBOARD" subtitle="文化的生活ダッシュボード — Monitoring ojimpo's cultural vitality" />
         <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 2 }}>
           LOADING...
         </div>
@@ -34,7 +34,7 @@ export default function SharedViewPage() {
   if (error || !data) {
     return (
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
-        <Header label="SHARED VIEW" subtitle="共有ビュー" />
+        <Header label="CULTURAL HEALTH DASHBOARD" subtitle="文化的生活ダッシュボード — Monitoring ojimpo's cultural vitality" />
         <div style={{ textAlign: 'center', padding: '80px 0', color: '#FF3366', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 2 }}>
           ページが見つかりません
         </div>
@@ -57,9 +57,9 @@ export default function SharedViewPage() {
 
       <div style={{ position: 'relative', zIndex: 1, maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
         <Header
-          label="SHARED VIEW"
+          label="CULTURAL HEALTH DASHBOARD"
           title="HEALTH.OJIMPO.COM"
-          subtitle="友人用共有ビュー"
+          subtitle="文化的生活ダッシュボード — Monitoring ojimpo's cultural vitality"
           dotColor={accentColor}
         />
 
@@ -111,6 +111,16 @@ export default function SharedViewPage() {
 
         {/* Recent activity (dimmed for CRITICAL) */}
         <RecentActivity activities={data.recent_activities} dimmed={isCritical} />
+
+        {/* Admin link (subtle) */}
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <Link
+            to="/admin"
+            style={{ fontSize: 10, letterSpacing: 2, color: 'rgba(255,255,255,0.15)', textDecoration: 'none' }}
+          >
+            ADMIN
+          </Link>
+        </div>
 
         <Footer />
       </div>

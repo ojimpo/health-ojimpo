@@ -8,7 +8,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<SharedViewPage />} />
       <Route path="/shared/:token" element={<SharedViewPage />} />
-      <Route path="/dashboard" element={<DashboardPage />} />
+      <Route path="/admin" element={<DashboardPage />} />
       <Route path="/settings" element={<SettingsPage />} />
     </Routes>
   )

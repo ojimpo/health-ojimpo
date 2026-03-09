@@ -21,7 +21,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
-        <Header label="CULTURAL HEALTH DASHBOARD" subtitle="文化的生活ダッシュボード — Monitoring your cultural vitality" />
+        <Header label="ADMIN DASHBOARD" subtitle="管理用ダッシュボード" />
         <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 2 }}>
           LOADING...
         </div>
@@ -32,7 +32,7 @@ export default function DashboardPage() {
   if (error || !data) {
     return (
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
-        <Header label="CULTURAL HEALTH DASHBOARD" subtitle="文化的生活ダッシュボード — Monitoring your cultural vitality" />
+        <Header label="ADMIN DASHBOARD" subtitle="管理用ダッシュボード" />
         <div style={{ textAlign: 'center', padding: '80px 0', color: '#FF3366', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 2 }}>
           {error || 'データの取得に失敗しました'}
         </div>
@@ -46,9 +46,13 @@ export default function DashboardPage() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
       <Header
-        label="CULTURAL HEALTH DASHBOARD"
-        subtitle="文化的生活ダッシュボード — Monitoring your cultural vitality"
+        label="ADMIN DASHBOARD"
+        subtitle="管理用ダッシュボード"
       />
+
+      <div style={{ display: 'inline-block', padding: '4px 12px', border: '1px solid rgba(255,51,102,0.3)', color: '#FF3366', fontSize: 10, letterSpacing: 3, marginBottom: 20 }}>
+        ADMIN MODE
+      </div>
 
       {/* Dual status cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 28 }}>
@@ -91,8 +95,14 @@ export default function DashboardPage() {
       {/* Recent activity */}
       <RecentActivity activities={data.recent_activities} />
 
-      {/* Nav to settings */}
-      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+      {/* Nav links */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 24, marginBottom: 24 }}>
+        <Link
+          to="/"
+          style={{ fontSize: 11, letterSpacing: 2, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: 2 }}
+        >
+          PUBLIC VIEW
+        </Link>
         <Link
           to="/settings"
           style={{ fontSize: 11, letterSpacing: 2, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: 2 }}

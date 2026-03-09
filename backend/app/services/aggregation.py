@@ -21,7 +21,7 @@ from .trend import generate_trend_comments
 logger = logging.getLogger(__name__)
 
 HEALTH_MESSAGES = {
-    HealthStatus.NORMAL: "健康的な状態です。いつも通り過ごしましょう",
+    HealthStatus.NORMAL: "健康的な状態です。いつも通り接して大丈夫です",
     HealthStatus.CAUTION: "少し注意が必要です。気にかけてください",
     HealthStatus.CRITICAL: "文化活動が大幅に低下しています。連絡を取ってみてください",
 }
