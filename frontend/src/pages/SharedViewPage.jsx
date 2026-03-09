@@ -17,7 +17,8 @@ import FriendlyMessage from '../components/shared/FriendlyMessage'
 export default function SharedViewPage() {
   const { token } = useParams()
   const [timeRange, setTimeRange] = useState('3m')
-  const { data, loading, error } = useApi(`/api/shared/${token}?range=${timeRange}`)
+  const apiUrl = token ? `/api/shared/${token}?range=${timeRange}` : `/api/shared/public?range=${timeRange}`
+  const { data, loading, error } = useApi(apiUrl)
 
   if (loading) {
     return (
