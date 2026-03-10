@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     lastfm_user: str = ""
     default_track_duration_seconds: int = 210  # 3.5 minutes
 
+    # Site identity
+    app_username: str = "user"
+    app_domain: str = "localhost:8401"
+
     # Database
     database_path: str = "/app/data/health.db"
 

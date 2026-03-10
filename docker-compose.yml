@@ -8,6 +8,8 @@ services:
     volumes:
       - ./data:/app/data
     environment:
+      - APP_USERNAME=${APP_USERNAME:-user}
+      - APP_DOMAIN=${APP_DOMAIN:-localhost:8401}
       - LASTFM_API_KEY=${LASTFM_API_KEY}
       - LASTFM_USER=${LASTFM_USER}
       - DATABASE_PATH=/app/data/health.db

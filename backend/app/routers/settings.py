@@ -2,6 +2,7 @@ import secrets
 
 from fastapi import APIRouter, HTTPException
 
+from ..config import settings
 from ..database import get_db_context
 from ..models.schemas import (
     BaselineCreate,
@@ -179,7 +180,7 @@ async def get_shared_settings():
         return {
             "token": token,
             "enabled": data.get("shared_view_enabled") == "true",
-            "url": f"health.ojimpo.com/shared/{token}",
+            "url": f"{settings.app_domain}/shared/{token}",
         }
 
 
@@ -214,5 +215,5 @@ async def regenerate_token():
         return {
             "token": new_token,
             "enabled": True,
-            "url": f"health.ojimpo.com/shared/{new_token}",
+            "url": f"{settings.app_domain}/shared/{new_token}",
         }

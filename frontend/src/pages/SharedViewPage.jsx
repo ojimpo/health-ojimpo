@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { useSiteInfo } from '../hooks/useSiteInfo'
 import { healthStatusConfig, culturalStatusConfig } from '../constants/statusConfig'
 import Header from '../components/common/Header'
 import Footer from '../components/common/Footer'
@@ -16,6 +17,7 @@ import FriendlyMessage from '../components/shared/FriendlyMessage'
 
 export default function SharedViewPage() {
   const { token } = useParams()
+  const { username } = useSiteInfo()
   const [timeRange, setTimeRange] = useState('3m')
   const apiUrl = token ? `/api/shared/${token}?range=${timeRange}` : `/api/shared/public?range=${timeRange}`
   const { data, loading, error } = useApi(apiUrl)
@@ -23,7 +25,7 @@ export default function SharedViewPage() {
   if (loading) {
     return (
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
-        <Header label="CULTURAL HEALTH DASHBOARD" subtitle="文化的生活ダッシュボード — Monitoring ojimpo's cultural vitality" />
+        <Header label="CULTURAL HEALTH DASHBOARD" subtitle={`文化的生活ダッシュボード — Monitoring ${username || '...'}'s cultural vitality`} />
         <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 2 }}>
           LOADING...
         </div>
@@ -34,7 +36,7 @@ export default function SharedViewPage() {
   if (error || !data) {
     return (
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
-        <Header label="CULTURAL HEALTH DASHBOARD" subtitle="文化的生活ダッシュボード — Monitoring ojimpo's cultural vitality" />
+        <Header label="CULTURAL HEALTH DASHBOARD" subtitle={`文化的生活ダッシュボード — Monitoring ${username || '...'}'s cultural vitality`} />
         <div style={{ textAlign: 'center', padding: '80px 0', color: '#FF3366', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 2 }}>
           ページが見つかりません
         </div>
@@ -58,8 +60,7 @@ export default function SharedViewPage() {
       <div style={{ position: 'relative', zIndex: 1, maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
         <Header
           label="CULTURAL HEALTH DASHBOARD"
-          title="HEALTH.OJIMPO.COM"
-          subtitle="文化的生活ダッシュボード — Monitoring ojimpo's cultural vitality"
+          subtitle={`文化的生活ダッシュボード — Monitoring ${username || '...'}'s cultural vitality`}
           dotColor={accentColor}
         />
 

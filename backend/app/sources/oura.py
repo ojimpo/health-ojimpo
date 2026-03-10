@@ -110,18 +110,20 @@ class OuraAdapter(SourceAdapter):
 
     async def aggregate(self) -> None:
         async with get_db_context() as db:
-            # Readiness → activity_records (source=oura, category=readiness)
+            # Readiness → activity_records (minutes = readiness_score for scoring)
             await db.execute(
                 """INSERT OR REPLACE INTO activity_records
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
-                SELECT date, 'oura', 'readiness', 0, readiness_score, 'score', NULL
+                SELECT date, 'oura', 'readiness',
+                       COALESCE(readiness_score, 0), readiness_score, 'score', NULL
                 FROM oura_daily WHERE readiness_score IS NOT NULL"""
             )
-            # Sleep → activity_records (source=oura, category=sleep)
+            # Sleep → activity_records (minutes = sleep_score for scoring + chart display)
             await db.execute(
                 """INSERT OR REPLACE INTO activity_records
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
-                SELECT date, 'oura', 'sleep', COALESCE(sleep_total_seconds / 60.0, 0), sleep_score, 'score', NULL
+                SELECT date, 'oura', 'sleep',
+                       COALESCE(sleep_score, 0), sleep_score, 'score', NULL
                 FROM oura_daily WHERE sleep_score IS NOT NULL"""
             )
             # Stress → activity_records (source=oura, category=stress)

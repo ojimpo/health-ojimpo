@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="HEALTH.OJIMPO.COM API",
+    title="Cultural Health Dashboard API",
     description="Cultural Health Dashboard - メンタルヘルス早期察知ダッシュボード",
     version="0.1.0",
     docs_url="/api/docs",
@@ -49,3 +49,12 @@ app.include_router(oauth.router, prefix="/api")
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
+
+
+@app.get("/api/site-info")
+async def site_info():
+    from .config import settings
+    return {
+        "username": settings.app_username,
+        "domain": settings.app_domain,
+    }
