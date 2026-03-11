@@ -16,7 +16,7 @@ import RecentActivity from '../components/dashboard/RecentActivity'
 export default function DashboardPage() {
   const [timeRange, setTimeRange] = useState('3m')
   const [hoveredCategory, setHoveredCategory] = useState(null)
-  const { data, loading, error } = useApi(`/api/dashboard?range=${timeRange}`)
+  const { data, loading, error, refreshing } = useApi(`/api/dashboard?range=${timeRange}`)
 
   if (loading) {
     return (
@@ -83,8 +83,14 @@ export default function DashboardPage() {
       </div>
 
       {/* Charts */}
-      <ActivityChart data={data.activity_chart} hoveredCategory={hoveredCategory} />
-      <ConditionChart data={data.condition_chart} />
+      <div style={{
+        opacity: refreshing ? 0.3 : 1,
+        transition: 'opacity 0.3s ease',
+        pointerEvents: refreshing ? 'none' : 'auto',
+      }}>
+        <ActivityChart data={data.activity_chart} hoveredCategory={hoveredCategory} />
+        <ConditionChart data={data.condition_chart} />
+      </div>
 
       {/* Category cards */}
       <CategoryCards cards={data.category_cards} onHover={setHoveredCategory} />

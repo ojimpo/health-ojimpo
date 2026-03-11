@@ -20,7 +20,7 @@ export default function SharedViewPage() {
   const { username } = useSiteInfo()
   const [timeRange, setTimeRange] = useState('3m')
   const apiUrl = token ? `/api/shared/${token}?range=${timeRange}` : `/api/shared/public?range=${timeRange}`
-  const { data, loading, error } = useApi(apiUrl)
+  const { data, loading, error, refreshing } = useApi(apiUrl)
 
   if (loading) {
     return (
@@ -96,16 +96,22 @@ export default function SharedViewPage() {
         </div>
 
         {/* Charts with saturation */}
-        <ActivityChart
-          data={data.activity_chart}
-          height={300}
-          saturation={presentation.chart_saturation}
-        />
-        <ConditionChart
-          data={data.condition_chart}
-          height={180}
-          saturation={presentation.chart_saturation}
-        />
+        <div style={{
+          opacity: refreshing ? 0.3 : 1,
+          transition: 'opacity 0.3s ease',
+          pointerEvents: refreshing ? 'none' : 'auto',
+        }}>
+          <ActivityChart
+            data={data.activity_chart}
+            height={300}
+            saturation={presentation.chart_saturation}
+          />
+          <ConditionChart
+            data={data.condition_chart}
+            height={180}
+            saturation={presentation.chart_saturation}
+          />
+        </div>
 
         {/* Category cards (smaller) */}
         <CategoryCards cards={data.category_cards} small />

@@ -4,9 +4,9 @@ export function useApi(url, options = {}) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   const fetchData = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
       const resp = await fetch(url, options)
@@ -17,14 +17,20 @@ export function useApi(url, options = {}) {
       setError(err.message)
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [url])
 
   useEffect(() => {
+    if (data === null) {
+      setLoading(true)
+    } else {
+      setRefreshing(true)
+    }
     fetchData()
   }, [fetchData])
 
-  return { data, loading, error, refetch: fetchData }
+  return { data, loading, error, refreshing, refetch: fetchData }
 }
 
 export async function apiPut(url, body) {
