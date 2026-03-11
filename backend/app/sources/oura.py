@@ -127,11 +127,15 @@ class OuraAdapter(SourceAdapter):
                 FROM oura_daily WHERE sleep_score IS NOT NULL"""
             )
             # Stress → activity_records (source=oura, category=stress)
+            # stress_level is stored as seconds of high stress; convert to minutes for scoring
             await db.execute(
                 """INSERT OR REPLACE INTO activity_records
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
-                SELECT date, 'oura', 'stress', 0, CAST(stress_level AS REAL), 'minutes', NULL
-                FROM oura_daily WHERE stress_level IS NOT NULL AND stress_level != ''"""
+                SELECT date, 'oura', 'stress',
+                       ROUND(CAST(stress_level AS REAL) / 60.0, 1),
+                       CAST(stress_level AS REAL), 'seconds', NULL
+                FROM oura_daily WHERE stress_level IS NOT NULL AND stress_level != ''
+                  AND CAST(stress_level AS INTEGER) > 0"""
             )
             await db.commit()
         logger.info("Oura aggregation completed")
@@ -161,10 +165,12 @@ class OuraAdapter(SourceAdapter):
                 if sleep is not None:
                     parts.append(f"Sleep {sleep}")
 
+                if not parts:
+                    continue
                 activities.append({
                     "time": time_str,
                     "icon": "😴",
-                    "text": " / ".join(parts) if parts else "データなし",
+                    "text": " / ".join(parts),
                     "detail": None,
                     "color": "#BD93F9",
                     "sort_date": row[0],

@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Phase 2 - Webhook
     webhook_secret: str = ""
 
+    # Phase 3 - sync-gateway (Filmarks, 読書メーター)
+    sync_gateway_base_url: str = ""
+
     # Phase 2 - OAuth2 client credentials (tokens stored in DB)
     strava_client_id: str = ""
     strava_client_secret: str = ""

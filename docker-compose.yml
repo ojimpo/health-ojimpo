@@ -24,6 +24,8 @@ services:
       - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET:-}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      # Phase 3
+      - SYNC_GATEWAY_BASE_URL=${SYNC_GATEWAY_BASE_URL:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
