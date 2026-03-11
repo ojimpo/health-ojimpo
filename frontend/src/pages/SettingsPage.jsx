@@ -7,23 +7,36 @@ import SourceCard from '../components/settings/SourceCard'
 import ThresholdSettings from '../components/settings/ThresholdSettings'
 import SharedViewSettings from '../components/settings/SharedViewSettings'
 
-const phaseFilters = [
-  { value: 'all', label: 'ALL' },
-  { value: 'mvp', label: 'MVP' },
-  { value: 'phase2', label: 'PHASE 2' },
-  { value: 'phase3', label: 'PHASE 3' },
-]
+const CATEGORY_LABELS = {
+  music: '音楽',
+  exercise: '運動',
+  reading: '読書',
+  movie: '映画',
+  sns: 'SNS',
+  coding: 'コーディング',
+  calendar: '予定',
+  live: 'ライブ',
+  shopping: '買い物',
+  fitness: 'フィットネス',
+  sleep: '睡眠',
+  weight: '体重',
+}
 
 export default function SettingsPage() {
-  const [phaseFilter, setPhaseFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const { data: sources, refetch: refetchSources } = useApi('/api/settings/sources')
   const { data: thresholds } = useApi('/api/settings/thresholds')
   const { data: sharedSettings, refetch: refetchShared } = useApi('/api/settings/shared')
 
+  // Build category list from sources
+  const categories = sources
+    ? [...new Set(sources.map(s => s.category))].sort()
+    : []
+
   const filteredSources = sources
-    ? phaseFilter === 'all'
+    ? categoryFilter === 'all'
       ? sources
-      : sources.filter(s => s.phase === phaseFilter)
+      : sources.filter(s => s.category === categoryFilter)
     : []
 
   const activeCount = sources ? sources.filter(s => s.status === 'active').length : 0
@@ -57,12 +70,30 @@ export default function SettingsPage() {
         </Link>
       </div>
 
-      {/* Phase filter */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-        {phaseFilters.map(f => (
+      {/* Category filter */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+        <button
+          onClick={() => setCategoryFilter('all')}
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            letterSpacing: 1,
+            padding: '6px 16px',
+            borderRadius: 6,
+            border: '1px solid',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            background: categoryFilter === 'all' ? 'rgba(0,240,255,0.1)' : 'transparent',
+            borderColor: categoryFilter === 'all' ? 'var(--cyan)' : 'var(--border-subtle)',
+            color: categoryFilter === 'all' ? 'var(--cyan)' : 'var(--text-subtle)',
+          }}
+        >
+          ALL
+        </button>
+        {categories.map(cat => (
           <button
-            key={f.value}
-            onClick={() => setPhaseFilter(f.value)}
+            key={cat}
+            onClick={() => setCategoryFilter(cat)}
             style={{
               fontFamily: 'var(--font-mono)',
               fontSize: 11,
@@ -72,12 +103,12 @@ export default function SettingsPage() {
               border: '1px solid',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
-              background: phaseFilter === f.value ? 'rgba(0,240,255,0.1)' : 'transparent',
-              borderColor: phaseFilter === f.value ? 'var(--cyan)' : 'var(--border-subtle)',
-              color: phaseFilter === f.value ? 'var(--cyan)' : 'var(--text-subtle)',
+              background: categoryFilter === cat ? 'rgba(0,240,255,0.1)' : 'transparent',
+              borderColor: categoryFilter === cat ? 'var(--cyan)' : 'var(--border-subtle)',
+              color: categoryFilter === cat ? 'var(--cyan)' : 'var(--text-subtle)',
             }}
           >
-            {f.label}
+            {CATEGORY_LABELS[cat] || cat}
           </button>
         ))}
       </div>

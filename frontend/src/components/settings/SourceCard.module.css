@@ -61,6 +61,16 @@
   color: var(--text-muted);
 }
 
+.statusLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  padding: 4px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+
 .connectBtn {
   font-family: var(--font-mono);
   font-size: 10px;

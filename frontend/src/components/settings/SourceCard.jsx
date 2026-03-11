@@ -2,22 +2,9 @@ import { useState } from 'react'
 import ToggleSwitch from '../common/ToggleSwitch'
 import styles from './SourceCard.module.css'
 
-const phaseColors = {
-  mvp: '#00F0FF',
-  phase2: '#FFB86C',
-  phase3: '#BD93F9',
-}
-
-const phaseLabels = {
-  mvp: 'MVP',
-  phase2: 'PHASE 2',
-  phase3: 'PHASE 3',
-}
-
 export default function SourceCard({ source, onUpdate, delay = 0 }) {
   const [expanded, setExpanded] = useState(false)
   const isActive = source.status === 'active'
-  const phaseColor = phaseColors[source.phase] || '#00F0FF'
 
   const handleToggle = (field, value) => {
     onUpdate?.(source.id, { [field]: value })
@@ -35,43 +22,29 @@ export default function SourceCard({ source, onUpdate, delay = 0 }) {
         <div className={styles.headerLeft}>
           <span className={styles.icon}>{source.icon}</span>
           <span className={styles.name}>{source.name}</span>
-          <span
-            className={styles.phaseBadge}
-            style={{ borderColor: `${phaseColor}40`, color: phaseColor }}
-          >
-            {phaseLabels[source.phase]}
-          </span>
-          {!isActive && source.phase === 'phase2' && (
-            <a
-              href={`/api/oauth/${source.id}/authorize`}
-              className={styles.connectBtn}
-              style={{ borderColor: `${source.color}60`, color: source.color }}
-              onClick={e => e.stopPropagation()}
-            >
-              接続する
-            </a>
-          )}
-          {!isActive && source.phase !== 'phase2' && <span className={styles.comingSoonLabel}>Coming Soon</span>}
+          {!isActive && <span className={styles.comingSoonLabel}>Coming Soon</span>}
         </div>
         <div className={styles.headerRight}>
-          <div className={styles.toggleGroup}>
-            <ToggleSwitch
-              label="本人"
-              checked={source.show_personal}
-              onChange={v => handleToggle('show_personal', v)}
-              color={source.color}
-              disabled={!isActive}
-            />
-            <ToggleSwitch
-              label="共有"
-              checked={source.show_shared}
-              onChange={v => handleToggle('show_shared', v)}
-              color={source.color}
-              disabled={!isActive}
-            />
-          </div>
-          {isActive && (
-            <span className={`${styles.expandIcon} ${expanded ? styles.expanded : ''}`}>▼</span>
+          {isActive ? (
+            <>
+              <div className={styles.toggleGroup}>
+                <ToggleSwitch
+                  label="本人"
+                  checked={source.show_personal}
+                  onChange={v => handleToggle('show_personal', v)}
+                  color={source.color}
+                />
+                <ToggleSwitch
+                  label="共有"
+                  checked={source.show_shared}
+                  onChange={v => handleToggle('show_shared', v)}
+                  color={source.color}
+                />
+              </div>
+              <span className={`${styles.expandIcon} ${expanded ? styles.expanded : ''}`}>▼</span>
+            </>
+          ) : (
+            <span className={styles.statusLabel}>未接続</span>
           )}
         </div>
       </div>
