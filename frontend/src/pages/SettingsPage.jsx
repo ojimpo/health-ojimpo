@@ -5,7 +5,6 @@ import Header from '../components/common/Header'
 import Footer from '../components/common/Footer'
 import SourceCard from '../components/settings/SourceCard'
 import ThresholdSettings from '../components/settings/ThresholdSettings'
-import SharedViewSettings from '../components/settings/SharedViewSettings'
 
 const CATEGORY_LABELS = {
   music: '音楽',
@@ -26,7 +25,7 @@ export default function SettingsPage() {
   const [categoryFilter, setCategoryFilter] = useState('all')
   const { data: sources, refetch: refetchSources } = useApi('/api/settings/sources')
   const { data: thresholds } = useApi('/api/settings/thresholds')
-  const { data: sharedSettings, refetch: refetchShared } = useApi('/api/settings/shared')
+
 
   // Build category list from sources
   const categories = sources
@@ -47,10 +46,6 @@ export default function SettingsPage() {
     refetchSources()
   }
 
-  const handleSharedToggle = async (enabled) => {
-    await apiPut('/api/settings/shared', { enabled })
-    refetchShared()
-  }
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px' }}>
@@ -127,9 +122,6 @@ export default function SettingsPage() {
 
       {/* Threshold settings */}
       <ThresholdSettings thresholds={thresholds} />
-
-      {/* Shared view settings */}
-      <SharedViewSettings settings={sharedSettings} onToggle={handleSharedToggle} />
 
       <Footer />
     </div>

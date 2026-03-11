@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ToggleSwitch from '../common/ToggleSwitch'
 import styles from './SourceCard.module.css'
 
@@ -6,8 +6,25 @@ export default function SourceCard({ source, onUpdate, delay = 0 }) {
   const [expanded, setExpanded] = useState(false)
   const isActive = source.status === 'active'
 
+  const [baseValue, setBaseValue] = useState(source.base_value)
+  const [aggPeriod, setAggPeriod] = useState(source.aggregation_period)
+  const [spontCoeff, setSpontCoeff] = useState(source.spontaneity_coefficient)
+
+  useEffect(() => {
+    setBaseValue(source.base_value)
+    setAggPeriod(source.aggregation_period)
+    setSpontCoeff(source.spontaneity_coefficient)
+  }, [source.base_value, source.aggregation_period, source.spontaneity_coefficient])
+
   const handleToggle = (field, value) => {
     onUpdate?.(source.id, { [field]: value })
+  }
+
+  const handleBlur = (field, value, original) => {
+    const num = parseFloat(value)
+    if (!isNaN(num) && num !== original) {
+      onUpdate?.(source.id, { [field]: num })
+    }
   }
 
   return (
@@ -60,8 +77,9 @@ export default function SourceCard({ source, onUpdate, delay = 0 }) {
                 <input
                   className={styles.input}
                   type="number"
-                  value={source.aggregation_period}
-                  readOnly
+                  value={aggPeriod}
+                  onChange={e => setAggPeriod(e.target.value)}
+                  onBlur={() => handleBlur('aggregation_period', aggPeriod, source.aggregation_period)}
                   style={{ width: 60 }}
                 />
               </div>
@@ -70,8 +88,9 @@ export default function SourceCard({ source, onUpdate, delay = 0 }) {
                 <input
                   className={styles.input}
                   type="number"
-                  value={source.base_value}
-                  readOnly
+                  value={baseValue}
+                  onChange={e => setBaseValue(e.target.value)}
+                  onBlur={() => handleBlur('base_value', baseValue, source.base_value)}
                   style={{ color: source.color }}
                 />
               </div>
@@ -124,11 +143,14 @@ export default function SourceCard({ source, onUpdate, delay = 0 }) {
                 min="0"
                 max="1.5"
                 step="0.1"
-                value={source.spontaneity_coefficient}
-                readOnly
+                value={spontCoeff}
+                onChange={e => {
+                  setSpontCoeff(parseFloat(e.target.value))
+                  onUpdate?.(source.id, { spontaneity_coefficient: parseFloat(e.target.value) })
+                }}
               />
               <span className={styles.sliderValue} style={{ color: source.color }}>
-                {source.spontaneity_coefficient}
+                {spontCoeff}
               </span>
             </div>
           </div>

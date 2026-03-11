@@ -277,19 +277,22 @@ async def _get_category_cards(for_date: date | None = None) -> list[CategoryCard
         total_prev = 0.0
         color = sources[0][1]  # Use first source's color
         for source_id, _ in sources:
-            _, raw_current, _ = await calculate_source_score(source_id, for_date)
-            _, raw_prev, _ = await calculate_source_score(source_id, for_date - timedelta(days=7))
-            total_current += raw_current
-            total_prev += raw_prev
+            score_current, _, _ = await calculate_source_score(source_id, for_date)
+            score_prev, _, _ = await calculate_source_score(source_id, for_date - timedelta(days=7))
+            total_current += score_current
+            total_prev += score_prev
 
+        n = len(sources)
+        avg_current = total_current / n
+        avg_prev = total_prev / n
         label = CATEGORY_LABELS.get(category, category)
         cards.append(CategoryCard(
             key=category,
             label=label,
             color=color,
-            current=round(total_current, 1),
-            previous=round(total_prev, 1),
-            change=round(total_current - total_prev, 1),
+            current=round(avg_current, 1),
+            previous=round(avg_prev, 1),
+            change=round(avg_current - avg_prev, 1),
         ))
 
     return cards
