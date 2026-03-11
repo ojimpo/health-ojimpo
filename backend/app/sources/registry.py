@@ -18,6 +18,8 @@ def register_adapters():
     from .google_calendar import GoogleCalendarAdapter
     from .gmail import GmailAdapter
     from .anthropic_usage import AnthropicUsageAdapter
+    from .github import GitHubAdapter
+    from .openai_usage import OpenAIUsageAdapter
     from .sync_gateway import SyncGatewayAdapter
 
     adapters = [
@@ -34,6 +36,8 @@ def register_adapters():
         SyncGatewayAdapter("filmarks", "filmarks", "映画 (Filmarks)", "movie", "🎬", "#FF9500", "本", "映画を視聴 "),
         SyncGatewayAdapter("bookmeter", "bookmeter", "読書メーター", "reading", "📖", "#ADFF2F", "冊", "本を読了 "),
         AnthropicUsageAdapter(),
+        GitHubAdapter(),
+        OpenAIUsageAdapter(),
     ]
     for adapter in adapters:
         SOURCE_ADAPTERS[adapter.source_id] = adapter

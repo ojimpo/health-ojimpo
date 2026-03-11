@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     # Phase 3 - Anthropic Admin API (Claude Code usage)
     anthropic_admin_api_key: str = ""
 
+    # Phase 3 - GitHub (commits/contributions)
+    github_token: str = ""
+    github_user: str = ""
+
+    # Phase 3 - OpenAI Usage API (Codex usage)
+    openai_admin_api_key: str = ""
+
     # Phase 2 - OAuth2 client credentials (tokens stored in DB)
     strava_client_id: str = ""
     strava_client_secret: str = ""
