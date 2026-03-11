@@ -81,23 +81,66 @@ def _get_range_params(time_range: TimeRange) -> tuple[int, str]:
             return 365, "monthly"
 
 
+# State categories that Oura writes but aren't in source_settings individually.
+# Daily baselines: sleep/readiness are 0-100 scores (80 = healthy), stress in minutes.
+_STATE_DAILY_BASELINES = {
+    "sleep": 80.0,
+    "readiness": 80.0,
+    "stress": 30.0,
+}
+
+
+async def _get_daily_baselines() -> dict[str, float]:
+    """Get daily baseline per category (sum of base_value/period*coeff for each active source).
+
+    Returns {category: daily_expected_value} where 100% = baseline met.
+    """
+    async with get_db_context() as db:
+        rows = await db.execute_fetchall(
+            """SELECT category, base_value, aggregation_period, spontaneity_coefficient
+            FROM source_settings WHERE status = 'active'"""
+        )
+    baselines: dict[str, float] = {}
+    for cat, base_val, period, coeff in rows:
+        cat = _map_category(cat)
+        daily = float(base_val) / max(int(period), 1) * float(coeff)
+        baselines[cat] = baselines.get(cat, 0) + daily
+
+    # State categories use explicit baselines (source_settings is per-source, not per-category)
+    baselines.update(_STATE_DAILY_BASELINES)
+
+    return baselines
+
+
+def _normalize_to_scores(
+    cat_data: dict[str, float],
+    daily_baselines: dict[str, float],
+    bucket_days: int,
+) -> dict[str, float]:
+    """Normalize raw minutes to scores (100 = baseline) for a time bucket."""
+    result = {}
+    for cat, raw in cat_data.items():
+        daily_base = daily_baselines.get(cat, 0)
+        expected = daily_base * bucket_days
+        if expected > 0:
+            result[cat] = (raw / expected) * 100
+        else:
+            result[cat] = raw  # no baseline; pass through
+    return result
+
+
 async def _get_chart_data(
     time_range: TimeRange, for_date: date | None = None
 ) -> list[ChartDataPoint]:
-    """Generate chart data points from all active sources, grouped by category."""
+    """Generate chart data points normalized to scores (100 = baseline)."""
     if for_date is None:
         for_date = date.today()
 
     days_back, granularity = _get_range_params(time_range)
     start_date = for_date - timedelta(days=days_back)
+    daily_baselines = await _get_daily_baselines()
 
     async with get_db_context() as db:
-        # Get all active source IDs
-        source_rows = await db.execute_fetchall(
-            "SELECT id, category FROM source_settings WHERE status = 'active'"
-        )
-        active_sources = {row[0]: row[1] for row in source_rows}
-
         if granularity == "daily":
             rows = await db.execute_fetchall(
                 """SELECT date, category, SUM(minutes) as total_minutes
@@ -109,7 +152,6 @@ async def _get_chart_data(
                 (start_date.isoformat(), for_date.isoformat()),
             )
 
-            # Build data map: date -> {category: minutes}
             data_map: dict[str, dict[str, float]] = {}
             for row in rows:
                 d = row[0]
@@ -121,8 +163,9 @@ async def _get_chart_data(
             while current <= for_date:
                 d = current.isoformat()
                 cat_data = data_map.get(d, {})
+                scores = _normalize_to_scores(cat_data, daily_baselines, 1)
                 points.append(_make_chart_point(
-                    f"{current.month}/{current.day}", cat_data
+                    f"{current.month}/{current.day}", scores
                 ))
                 current += timedelta(days=1)
             return points
@@ -132,6 +175,7 @@ async def _get_chart_data(
             week_start = start_date
             while week_start <= for_date:
                 week_end = min(week_start + timedelta(days=6), for_date)
+                bucket_days = (week_end - week_start).days + 1
                 rows = await db.execute_fetchall(
                     """SELECT category, SUM(minutes) as total_minutes
                     FROM activity_records
@@ -145,8 +189,9 @@ async def _get_chart_data(
                     cat = _map_category(row[0])
                     cat_data[cat] = cat_data.get(cat, 0) + float(row[1])
 
+                scores = _normalize_to_scores(cat_data, daily_baselines, bucket_days)
                 points.append(_make_chart_point(
-                    f"{week_start.month}/{week_start.day}", cat_data
+                    f"{week_start.month}/{week_start.day}", scores
                 ))
                 week_start += timedelta(days=7)
             return points
@@ -157,21 +202,24 @@ async def _get_chart_data(
             while current_month <= for_date:
                 next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
                 month_end = next_month - timedelta(days=1)
+                end = min(month_end, for_date)
+                bucket_days = (end - current_month).days + 1
                 rows = await db.execute_fetchall(
                     """SELECT category, SUM(minutes) as total_minutes
                     FROM activity_records
                     WHERE source IN (SELECT id FROM source_settings WHERE status = 'active')
                       AND date >= ? AND date <= ?
                     GROUP BY category""",
-                    (current_month.isoformat(), min(month_end, for_date).isoformat()),
+                    (current_month.isoformat(), end.isoformat()),
                 )
                 cat_data = {}
                 for row in rows:
                     cat = _map_category(row[0])
                     cat_data[cat] = cat_data.get(cat, 0) + float(row[1])
 
+                scores = _normalize_to_scores(cat_data, daily_baselines, bucket_days)
                 points.append(_make_chart_point(
-                    f"{current_month.month}月", cat_data
+                    f"{current_month.month}月", scores
                 ))
                 current_month = next_month
             return points
