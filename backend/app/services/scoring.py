@@ -62,12 +62,13 @@ async def calculate_source_score(
     base_value, period = await get_effective_baseline(source_id, date_str)
 
     async with get_db_context() as db:
-        # Get spontaneity coefficient
+        # Get spontaneity coefficient and classification
         rows = await db.execute_fetchall(
-            "SELECT spontaneity_coefficient FROM source_settings WHERE id = ?",
+            "SELECT spontaneity_coefficient, classification FROM source_settings WHERE id = ?",
             (source_id,),
         )
         coeff = float(rows[0][0]) if rows else 1.0
+        classification = rows[0][1] if rows else "baseline"
 
         # Sum raw_value over the aggregation period window
         start_date = (for_date - timedelta(days=period - 1)).isoformat()
@@ -84,8 +85,9 @@ async def calculate_source_score(
     if base_value <= 0:
         return 0.0, raw_total, base_value
 
-    # Pro-rate base_value when data doesn't cover the full period
-    if days_with_data > 0 and days_with_data < period:
+    # Pro-rate base_value only for baseline sources (daily data expected)
+    # Event sources (reading, movies) naturally have sparse data
+    if classification != "event" and days_with_data > 0 and days_with_data < period:
         adjusted_base = base_value * (days_with_data / period)
     else:
         adjusted_base = base_value
