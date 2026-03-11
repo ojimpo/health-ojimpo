@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # Phase 3 - sync-gateway (Filmarks, 読書メーター)
     sync_gateway_base_url: str = ""
 
+    # Phase 3 - Anthropic Admin API (Claude Code usage)
+    anthropic_admin_api_key: str = ""
+
     # Phase 2 - OAuth2 client credentials (tokens stored in DB)
     strava_client_id: str = ""
     strava_client_secret: str = ""
