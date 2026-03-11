@@ -10,7 +10,7 @@ SOURCE_ADAPTERS: dict[str, SourceAdapter] = {}
 def register_adapters():
     """Initialize all available adapters."""
     from .lastfm import LastfmAdapter
-    from .kashidashi import KashidashiAdapter
+    from .kashidashi import KashidashiCDAdapter
     from .oura import OuraAdapter
     from .intervals_icu import IntervalsAdapter
     from .screen_time import ScreenTimeAdapter
@@ -21,7 +21,7 @@ def register_adapters():
 
     adapters = [
         LastfmAdapter(),
-        KashidashiAdapter(),
+        KashidashiCDAdapter(),
         OuraAdapter(),
         IntervalsAdapter(),
         ScreenTimeAdapter("instagram"),

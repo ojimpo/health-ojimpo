@@ -10,15 +10,15 @@ from .base import SourceAdapter
 logger = logging.getLogger(__name__)
 
 
-class KashidashiAdapter(SourceAdapter):
-    source_id = "kashidashi"
-    display_name = "kashidashi (図書館)"
+class KashidashiCDAdapter(SourceAdapter):
+    source_id = "kashidashi_cd"
+    display_name = "CD貸出 (kashidashi)"
 
     async def is_configured(self) -> bool:
         return bool(settings.kashidashi_base_url)
 
     async def fetch_and_store(self, from_date: str | None = None) -> tuple[int, int]:
-        """Fetch returned books from kashidashi API and write to activity_records."""
+        """Fetch CD items from kashidashi API and count by borrowed_date."""
         base_url = settings.kashidashi_base_url.rstrip("/")
         try:
             async with httpx.AsyncClient(timeout=15) as client:
@@ -29,13 +29,16 @@ class KashidashiAdapter(SourceAdapter):
             logger.exception("Failed to fetch from kashidashi API")
             return 0, 0
 
-        # Count returned items per date
+        # Filter CD items only, count by borrowed_date
         daily_counts: dict[str, int] = {}
+        cd_count = 0
         for item in items:
-            returned_at = item.get("returned_at")
-            if not returned_at:
+            if item.get("type") != "cd":
                 continue
-            d = returned_at[:10]  # YYYY-MM-DD
+            cd_count += 1
+            d = item.get("borrowed_date")
+            if not d:
+                continue
             if from_date and d < from_date:
                 continue
             daily_counts[d] = daily_counts.get(d, 0) + 1
@@ -46,17 +49,16 @@ class KashidashiAdapter(SourceAdapter):
                 await db.execute(
                     """INSERT OR REPLACE INTO activity_records
                     (date, source, category, minutes, raw_value, raw_unit, metadata)
-                    VALUES (?, 'kashidashi', 'reading', ?, ?, '冊', NULL)""",
+                    VALUES (?, 'kashidashi_cd', 'music', ?, ?, '枚', NULL)""",
                     (d, count, count),
                 )
                 stored += 1
             await db.commit()
 
-        logger.info("kashidashi: stored %d daily records from %d items", stored, len(items))
-        return len(items), stored
+        logger.info("kashidashi_cd: stored %d daily records from %d CD items", stored, cd_count)
+        return cd_count, stored
 
     async def aggregate(self) -> None:
-        # Already written directly to activity_records in fetch_and_store
         pass
 
     async def get_recent_activities(
@@ -65,7 +67,7 @@ class KashidashiAdapter(SourceAdapter):
         async with get_db_context() as db:
             rows = await db.execute_fetchall(
                 """SELECT date, raw_value FROM activity_records
-                WHERE source = 'kashidashi'
+                WHERE source = 'kashidashi_cd'
                 ORDER BY date DESC LIMIT ?""",
                 (limit,),
             )
@@ -85,10 +87,10 @@ class KashidashiAdapter(SourceAdapter):
                 count = int(row[1])
                 activities.append({
                     "time": time_str,
-                    "icon": "📚",
-                    "text": f"図書{count}冊を返却",
+                    "icon": "💿",
+                    "text": f"CD{count}枚を貸出",
                     "detail": None,
-                    "color": "#ADFF2F",
+                    "color": "#00BFFF",
                     "sort_date": row[0],
                 })
 
