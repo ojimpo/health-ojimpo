@@ -170,3 +170,44 @@ SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END)
 
 本番サーバーにデータあり、Claude Codeで実装しているため
 GitHubでブランチを切ってUIを使い回しながら実験可能。
+
+## 関連する研究分野・参考文献
+
+このプロジェクトが取り組んでいることは、複数の確立された研究分野と重なっている。
+
+### 1. Digital Phenotyping（デジタル表現型）
+
+スマホやウェアラブルから受動的にデータを収集し、メンタルヘルスの状態変化を検知する研究領域。
+このプロジェクトのアプローチと最も直接的に重なる。
+
+- 行動パターンの変化（移動、スマホ使用、睡眠、通話等）から精神状態を推定
+- 再発の2週間前に行動異常の検出率が71%高くなるという知見あり
+- 双極性障害の安定/不安定状態を受動データから85%精度で予測した研究も
+
+**このプロジェクトとの関係:** 手法は同じだが、データソースが異なる。
+既存研究はスマホセンサー（GPS、加速度計）が中心で、文化的活動（音楽、読書、映画）を
+メンタルの代理指標とするアプローチはあまり見られない。ここに新規性がある可能性。
+
+**参考文献:**
+- [Digital Phenotyping for Monitoring Mental Disorders: Systematic Review (2023)](https://pmc.ncbi.nlm.nih.gov/articles/PMC10753422/)
+- [Digital phenotyping: how it could change mental health care (2024)](https://www.tandfonline.com/doi/full/10.1080/09638237.2024.2395537)
+- [Digital Phenotyping: Data-Driven Psychiatry to Redefine... (2023)](https://pmc.ncbi.nlm.nih.gov/articles/PMC10585447/)
+- [Wearable, Environmental, and Smartphone-Based Passive Sensing for Mental Health Monitoring (2021)](https://www.frontiersin.org/journals/digital-health/articles/10.3389/fdgth.2021.662811/full)
+
+### 2. Personal Informatics（パーソナルインフォマティクス）
+
+自己追跡データの可視化・解釈・行動変容に関するHCI（ヒューマンコンピュータインタラクション）研究。
+
+- 追跡 → 統合 → 振り返り → 行動 の段階モデル
+- 「へー知らなかった」で終わるインサイト vs 行動が変わるインサイトの違い
+- 長期追跡のモチベーション維持の課題
+
+**参考文献:**
+- [Personal Informatics, Self-Insight, and Behavior Change: A Critical Review (2016)](https://www.tandfonline.com/doi/full/10.1080/07370024.2016.1276456)
+- [How Self-tracking and the Quantified Self Promote Health and Well-being (2021)](https://pmc.ncbi.nlm.nih.gov/articles/PMC8493454/)
+
+### 3. 既存研究で手薄な領域（＝このプロジェクトの潜在的な独自性）
+
+- 文化的活動をメンタルヘルスの代理指標として使うアプローチ
+- セルフトラッキングデータに対する異常検知（anomaly detection）の応用
+- 「達成率」ではなく「パターンの変化」で状態を検知する手法（2層分離提案と方向が一致）
