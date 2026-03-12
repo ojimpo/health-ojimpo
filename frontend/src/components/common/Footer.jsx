@@ -7,7 +7,10 @@ export default function Footer() {
 
   return (
     <footer className={styles.footer}>
-      {displayDomain} — CULTURAL HEALTH DASHBOARD
+      <div>{displayDomain} — CULTURAL HEALTH DASHBOARD</div>
+      <div className={styles.quote}>
+        "As long as you live, keep learning how to live." — Seneca
+      </div>
     </footer>
   )
 }

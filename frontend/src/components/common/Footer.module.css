@@ -6,3 +6,9 @@
   letter-spacing: 2px;
   color: var(--text-muted);
 }
+
+.quote {
+  margin-top: 8px;
+  font-style: italic;
+  opacity: 0.6;
+}
