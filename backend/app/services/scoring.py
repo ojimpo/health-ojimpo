@@ -73,7 +73,7 @@ async def calculate_source_score(
         # Sum raw_value over the aggregation period window
         start_date = (for_date - timedelta(days=period - 1)).isoformat()
         rows = await db.execute_fetchall(
-            """SELECT COALESCE(SUM(minutes), 0) as total_minutes,
+            """SELECT COALESCE(SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END), 0) as total_minutes,
                       COUNT(DISTINCT date) as days_with_data
             FROM activity_records
             WHERE source = ? AND date >= ? AND date <= ?""",

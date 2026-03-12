@@ -143,7 +143,7 @@ async def _get_chart_data(
     async with get_db_context() as db:
         if granularity == "daily":
             rows = await db.execute_fetchall(
-                """SELECT date, category, SUM(minutes) as total_minutes
+                """SELECT date, category, SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as total_minutes
                 FROM activity_records
                 WHERE source IN (SELECT id FROM source_settings WHERE status = 'active')
                   AND date >= ? AND date <= ?
@@ -177,7 +177,7 @@ async def _get_chart_data(
                 week_end = min(week_start + timedelta(days=6), for_date)
                 bucket_days = (week_end - week_start).days + 1
                 rows = await db.execute_fetchall(
-                    """SELECT category, SUM(minutes) as total_minutes
+                    """SELECT category, SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as total_minutes
                     FROM activity_records
                     WHERE source IN (SELECT id FROM source_settings WHERE status = 'active')
                       AND date >= ? AND date <= ?
@@ -205,7 +205,7 @@ async def _get_chart_data(
                 end = min(month_end, for_date)
                 bucket_days = (end - current_month).days + 1
                 rows = await db.execute_fetchall(
-                    """SELECT category, SUM(minutes) as total_minutes
+                    """SELECT category, SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as total_minutes
                     FROM activity_records
                     WHERE source IN (SELECT id FROM source_settings WHERE status = 'active')
                       AND date >= ? AND date <= ?
