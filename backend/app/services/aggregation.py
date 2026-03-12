@@ -15,7 +15,7 @@ from ..models.schemas import (
     TrendComment,
 )
 from ..sources.registry import SOURCE_ADAPTERS
-from .scoring import calculate_scores, calculate_source_score
+from .scoring import calculate_scores, calculate_source_score, get_thresholds
 from .trend import generate_trend_comments
 
 logger = logging.getLogger(__name__)
@@ -90,6 +90,66 @@ _STATE_DAILY_BASELINES = {
 }
 
 
+async def _get_category_classifications() -> tuple[set[str], set[str]]:
+    """Get baseline and activity category sets from source_settings.
+
+    Returns (baseline_categories, activity_categories).
+    """
+    async with get_db_context() as db:
+        rows = await db.execute_fetchall(
+            "SELECT category, classification, display_type FROM source_settings WHERE status = 'active'"
+        )
+    baseline_cats: set[str] = set()
+    activity_cats: set[str] = set()
+    for cat, classification, display_type in rows:
+        mapped = _map_category(cat)
+        if classification in ("baseline", "both"):
+            baseline_cats.add(mapped)
+        if display_type == "activity":
+            activity_cats.add(mapped)
+    return baseline_cats, activity_cats
+
+
+def _compute_point_status(
+    scores: dict[str, float],
+    baseline_cats: set[str],
+    activity_cats: set[str],
+    thresholds: dict[str, float],
+) -> tuple[str | None, str | None]:
+    """Compute health and cultural status for a single chart data point."""
+    # Health status: average of baseline category scores
+    baseline_vals = [scores[k] for k in baseline_cats if k in scores]
+    baseline_avg = sum(baseline_vals) / len(baseline_vals) if baseline_vals else None
+
+    # Cultural status: average of activity category scores (100 = baseline met)
+    activity_vals = [scores.get(k, 0) for k in activity_cats]
+    cultural_pct = sum(activity_vals) / len(activity_vals) if activity_vals else None
+
+    health = None
+    if baseline_avg is not None:
+        hn = thresholds.get("health_normal_threshold", 70)
+        hc = thresholds.get("health_caution_threshold", 40)
+        if baseline_avg >= hn:
+            health = "NORMAL"
+        elif baseline_avg >= hc:
+            health = "CAUTION"
+        else:
+            health = "CRITICAL"
+
+    cultural = None
+    if cultural_pct is not None:
+        cr = thresholds.get("cultural_rich_threshold", 70)
+        cm = thresholds.get("cultural_moderate_threshold", 40)
+        if cultural_pct >= cr:
+            cultural = "RICH"
+        elif cultural_pct >= cm:
+            cultural = "MODERATE"
+        else:
+            cultural = "LOW"
+
+    return health, cultural
+
+
 async def _get_daily_baselines() -> dict[str, float]:
     """Get daily baseline per category (sum of base_value/period*coeff for each active source).
 
@@ -139,6 +199,8 @@ async def _get_chart_data(
     days_back, granularity = _get_range_params(time_range)
     start_date = for_date - timedelta(days=days_back)
     daily_baselines = await _get_daily_baselines()
+    thresholds = await get_thresholds()
+    baseline_cats, activity_cats = await _get_category_classifications()
 
     async with get_db_context() as db:
         if granularity == "daily":
@@ -164,8 +226,9 @@ async def _get_chart_data(
                 d = current.isoformat()
                 cat_data = data_map.get(d, {})
                 scores = _normalize_to_scores(cat_data, daily_baselines, 1)
+                h, c = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
                 points.append(_make_chart_point(
-                    f"{current.month}/{current.day}", scores
+                    f"{current.month}/{current.day}", scores, h, c
                 ))
                 current += timedelta(days=1)
             return points
@@ -190,8 +253,9 @@ async def _get_chart_data(
                     cat_data[cat] = cat_data.get(cat, 0) + float(row[1])
 
                 scores = _normalize_to_scores(cat_data, daily_baselines, bucket_days)
+                h, c = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
                 points.append(_make_chart_point(
-                    f"{week_start.month}/{week_start.day}", scores
+                    f"{week_start.month}/{week_start.day}", scores, h, c
                 ))
                 week_start += timedelta(days=7)
             return points
@@ -218,8 +282,9 @@ async def _get_chart_data(
                     cat_data[cat] = cat_data.get(cat, 0) + float(row[1])
 
                 scores = _normalize_to_scores(cat_data, daily_baselines, bucket_days)
+                h, c = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
                 points.append(_make_chart_point(
-                    f"{current_month.month}月", scores
+                    f"{current_month.month}月", scores, h, c
                 ))
                 current_month = next_month
             return points
@@ -237,7 +302,12 @@ def _map_category(category: str) -> str:
     return mapping.get(category, category)
 
 
-def _make_chart_point(date_label: str, cat_data: dict[str, float]) -> ChartDataPoint:
+def _make_chart_point(
+    date_label: str,
+    cat_data: dict[str, float],
+    health_status: str | None = None,
+    cultural_status: str | None = None,
+) -> ChartDataPoint:
     """Create a ChartDataPoint from category data dict."""
     return ChartDataPoint(
         date=date_label,
@@ -252,6 +322,8 @@ def _make_chart_point(date_label: str, cat_data: dict[str, float]) -> ChartDataP
         readiness=round(cat_data["readiness"], 1) if "readiness" in cat_data else None,
         stress=round(cat_data["stress"], 1) if "stress" in cat_data else None,
         weight=round(cat_data["weight"], 1) if "weight" in cat_data else None,
+        health_status=health_status,
+        cultural_status=cultural_status,
     )
 
 

@@ -1,9 +1,13 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { stateCategories } from '../../constants/categories'
+import { healthStatusConfig, culturalStatusConfig } from '../../constants/statusConfig'
 import styles from './ConditionChart.module.css'
 
 function StateTooltip({ active, payload, label }) {
-  if (!active || !payload) return null
+  if (!active || !payload || !payload.length) return null
+  const point = payload[0]?.payload
+  const healthStatus = point?.health_status
+  const culturalStatus = point?.cultural_status
   return (
     <div style={{
       background: 'rgba(10,10,20,0.95)',
@@ -16,6 +20,20 @@ function StateTooltip({ active, payload, label }) {
       <div style={{ color: '#BD93F9', fontSize: 11, marginBottom: 8, letterSpacing: 1 }}>
         WEEK {label}
       </div>
+      {(healthStatus || culturalStatus) && (
+        <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 10, letterSpacing: 0.5 }}>
+          {healthStatus && (
+            <span style={{ color: healthStatusConfig[healthStatus]?.color, fontWeight: 600 }}>
+              ● {healthStatus}
+            </span>
+          )}
+          {culturalStatus && (
+            <span style={{ color: culturalStatusConfig[culturalStatus]?.color, fontWeight: 600 }}>
+              ● {culturalStatus}
+            </span>
+          )}
+        </div>
+      )}
       {payload.map((p, i) => (
         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 24, fontSize: 12, color: p.color, padding: '2px 0' }}>
           <span style={{ opacity: 0.8 }}>{stateCategories.find(c => c.key === p.dataKey)?.label}</span>
