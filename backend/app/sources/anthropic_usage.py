@@ -64,17 +64,6 @@ class AnthropicUsageAdapter(SourceAdapter):
                     logger.exception("Error storing usage for %s", bucket["date"])
             await db.commit()
 
-        # Update ingest_log last_timestamp
-        if last_ts > 0:
-            async with get_db_context() as db:
-                await db.execute(
-                    """UPDATE ingest_log SET last_timestamp = ?
-                    WHERE source = 'claude' AND status = 'running'
-                    ORDER BY id DESC LIMIT 1""",
-                    (last_ts,),
-                )
-                await db.commit()
-
         logger.info("Stored %d usage records", stored)
         return len(buckets), stored
 

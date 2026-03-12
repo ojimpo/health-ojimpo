@@ -60,16 +60,6 @@ class GitHubAdapter(SourceAdapter):
                     logger.exception("Error storing GitHub data for %s", day["date"])
             await db.commit()
 
-        if last_ts > 0:
-            async with get_db_context() as db:
-                await db.execute(
-                    """UPDATE ingest_log SET last_timestamp = ?
-                    WHERE source = 'github' AND status = 'running'
-                    ORDER BY id DESC LIMIT 1""",
-                    (last_ts,),
-                )
-                await db.commit()
-
         logger.info("Stored %d GitHub commit records", stored)
         return len(days), stored
 

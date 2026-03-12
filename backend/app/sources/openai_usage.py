@@ -59,16 +59,6 @@ class OpenAIUsageAdapter(SourceAdapter):
                     logger.exception("Error storing OpenAI usage for %s", bucket["date"])
             await db.commit()
 
-        if last_ts > 0:
-            async with get_db_context() as db:
-                await db.execute(
-                    """UPDATE ingest_log SET last_timestamp = ?
-                    WHERE source = 'openai' AND status = 'running'
-                    ORDER BY id DESC LIMIT 1""",
-                    (last_ts,),
-                )
-                await db.commit()
-
         logger.info("Stored %d OpenAI usage records", stored)
         return len(buckets), stored
 
