@@ -28,6 +28,8 @@ services:
       # Phase 3
       - SYNC_GATEWAY_BASE_URL=${SYNC_GATEWAY_BASE_URL:-}
       - CLAUDE_PROJECTS_DIR=/home/kouki/.claude/projects
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_USER=${GITHUB_USER:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s

@@ -83,7 +83,8 @@ async def _fetch_via_events(
                     continue
                 date_str = event["created_at"][:10]
                 payload = event.get("payload", {})
-                commit_count = payload.get("distinct_size", 0)
+                # Fine-grained PATs may not return distinct_size; fall back to 1 per push
+                commit_count = payload.get("distinct_size") or 1
                 repo_name = event.get("repo", {}).get("name", "")
 
                 daily[date_str]["commits"] += commit_count
