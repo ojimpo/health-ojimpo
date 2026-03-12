@@ -7,6 +7,7 @@ services:
       - "127.0.0.1:8400:8000"
     volumes:
       - ./data:/app/data
+      - /home/kouki/.claude:/home/kouki/.claude:ro
     environment:
       - APP_USERNAME=${APP_USERNAME:-user}
       - APP_DOMAIN=${APP_DOMAIN:-localhost:8401}
@@ -26,6 +27,7 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       # Phase 3
       - SYNC_GATEWAY_BASE_URL=${SYNC_GATEWAY_BASE_URL:-}
+      - CLAUDE_PROJECTS_DIR=/home/kouki/.claude/projects
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s

@@ -17,7 +17,7 @@ def register_adapters():
     from .strava import StravaAdapter
     from .google_calendar import GoogleCalendarAdapter
     from .gmail import GmailAdapter
-    from .anthropic_usage import AnthropicUsageAdapter
+    from .claude_local import ClaudeLocalAdapter
     from .github import GitHubAdapter
     from .openai_usage import OpenAIUsageAdapter
     from .sync_gateway import SyncGatewayAdapter
@@ -35,7 +35,7 @@ def register_adapters():
         GmailAdapter(),
         SyncGatewayAdapter("filmarks", "filmarks", "映画 (Filmarks)", "movie", "🎬", "#FF9500", "本", "映画を視聴 "),
         SyncGatewayAdapter("bookmeter", "bookmeter", "読書メーター", "reading", "📖", "#ADFF2F", "冊", "本を読了 "),
-        AnthropicUsageAdapter(),
+        ClaudeLocalAdapter(),
         GitHubAdapter(),
         OpenAIUsageAdapter(),
     ]
