@@ -56,22 +56,44 @@ async def calculate_source_score(
     """Calculate score for a single source.
 
     Returns (score, raw_total, base_value).
-    score = (raw_total / base_value) * 100 * spontaneity_coefficient
+
+    Two scoring methods (determined by source_settings.score_method):
+    - 'sum': score = (period_total / base_value) * 100 * coeff  (default)
+    - 'daily_avg': score = (avg_daily_value / base_value) * 100 * coeff
+      Uses average of days with data; resilient to missing days.
+      Excludes 'stress' category (lower-is-better, incompatible with sum).
     """
     date_str = for_date.isoformat()
     base_value, period = await get_effective_baseline(source_id, date_str)
 
     async with get_db_context() as db:
-        # Get spontaneity coefficient and classification
         rows = await db.execute_fetchall(
-            "SELECT spontaneity_coefficient, classification FROM source_settings WHERE id = ?",
+            "SELECT spontaneity_coefficient, classification, score_method FROM source_settings WHERE id = ?",
             (source_id,),
         )
         coeff = float(rows[0][0]) if rows else 1.0
         classification = rows[0][1] if rows else "baseline"
+        score_method = rows[0][2] if rows else "sum"
 
-        # Sum raw_value over the aggregation period window
         start_date = (for_date - timedelta(days=period - 1)).isoformat()
+
+        if score_method == "daily_avg":
+            # Average daily values (exclude stress: lower-is-better)
+            rows = await db.execute_fetchall(
+                """SELECT date,
+                          SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as daily_total
+                FROM activity_records
+                WHERE source = ? AND date >= ? AND date <= ? AND category != 'stress'
+                GROUP BY date""",
+                (source_id, start_date, date_str),
+            )
+            if not rows or base_value <= 0:
+                return 0.0, 0.0, base_value
+            daily_avg = sum(float(r[1]) for r in rows) / len(rows)
+            score = (daily_avg / base_value) * 100 * coeff
+            return score, daily_avg, base_value
+
+        # Default: sum method
         rows = await db.execute_fetchall(
             """SELECT COALESCE(SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END), 0) as total_minutes,
                       COUNT(DISTINCT date) as days_with_data
