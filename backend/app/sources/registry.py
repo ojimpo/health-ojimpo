@@ -14,7 +14,7 @@ def register_adapters():
     from .oura import OuraAdapter
     from .intervals_icu import IntervalsAdapter
     from .screen_time import ScreenTimeAdapter
-    from .strava import StravaAdapter
+    from .strava import StravaAdapter, StravaCommuteAdapter, StravaRideAdapter
     from .google_calendar import GoogleCalendarAdapter
     from .gmail import GmailAdapter
     from .claude_local import ClaudeLocalAdapter
@@ -30,6 +30,8 @@ def register_adapters():
         ScreenTimeAdapter("instagram"),
         ScreenTimeAdapter("twitter"),
         StravaAdapter(),
+        StravaCommuteAdapter(),
+        StravaRideAdapter(),
         GoogleCalendarAdapter("gcal_holiday"),
         GoogleCalendarAdapter("gcal_live"),
         GmailAdapter(),

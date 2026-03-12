@@ -18,6 +18,7 @@ class ChartDataPoint(BaseModel):
     date: str
     music: float = 0
     exercise: float = 0
+    commute: float = 0
     reading: float = 0
     movie: float = 0
     sns: float = 0

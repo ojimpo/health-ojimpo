@@ -62,8 +62,8 @@ class StravaAdapter(SourceAdapter):
                         """INSERT OR REPLACE INTO strava_activities
                         (id, activity_type, name, distance_meters, moving_time_seconds,
                          elapsed_time_seconds, total_elevation_gain, commute,
-                         start_date, start_date_local, timezone)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                         start_date, start_date_local, timezone, gear_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             act["id"],
                             act.get("type", ""),
@@ -76,6 +76,7 @@ class StravaAdapter(SourceAdapter):
                             act.get("start_date", ""),
                             act.get("start_date_local", ""),
                             act.get("timezone", ""),
+                            act.get("gear_id"),
                         ),
                     )
                     stored += 1
@@ -88,7 +89,7 @@ class StravaAdapter(SourceAdapter):
 
     async def aggregate(self) -> None:
         async with get_db_context() as db:
-            # Aggregate by date: sum distance in km, sum moving time in minutes
+            # 1) strava (exercise, minutes): all non-commute activities — baseline
             await db.execute(
                 """INSERT OR REPLACE INTO activity_records
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
@@ -97,10 +98,44 @@ class StravaAdapter(SourceAdapter):
                     'strava',
                     'exercise',
                     ROUND(SUM(moving_time_seconds) / 60.0, 1),
+                    ROUND(SUM(moving_time_seconds) / 60.0, 1),
+                    'min',
+                    NULL
+                FROM strava_activities
+                WHERE NOT (activity_type = 'Ride' AND commute = 1)
+                GROUP BY SUBSTR(start_date_local, 1, 10)"""
+            )
+            # 2) strava_commute (commute, minutes): commute rides — baseline
+            await db.execute(
+                """INSERT OR REPLACE INTO activity_records
+                (date, source, category, minutes, raw_value, raw_unit, metadata)
+                SELECT
+                    SUBSTR(start_date_local, 1, 10),
+                    'strava_commute',
+                    'commute',
+                    ROUND(SUM(moving_time_seconds) / 60.0, 1),
+                    ROUND(SUM(moving_time_seconds) / 60.0, 1),
+                    'min',
+                    NULL
+                FROM strava_activities
+                WHERE activity_type = 'Ride' AND commute = 1
+                GROUP BY SUBSTR(start_date_local, 1, 10)"""
+            )
+            # 3) strava_ride (exercise, km): non-commute Ride distance — event bonus
+            #    Double-counts with strava minutes; rewards long rides
+            await db.execute(
+                """INSERT OR REPLACE INTO activity_records
+                (date, source, category, minutes, raw_value, raw_unit, metadata)
+                SELECT
+                    SUBSTR(start_date_local, 1, 10),
+                    'strava_ride',
+                    'exercise',
+                    0,
                     ROUND(SUM(distance_meters) / 1000.0, 1),
                     'km',
                     NULL
                 FROM strava_activities
+                WHERE activity_type = 'Ride' AND commute = 0
                 GROUP BY SUBSTR(start_date_local, 1, 10)"""
             )
             await db.commit()
@@ -114,8 +149,10 @@ class StravaAdapter(SourceAdapter):
                 """SELECT SUBSTR(start_date_local, 1, 10) as d,
                     SUM(distance_meters) / 1000.0 as km,
                     SUM(moving_time_seconds) / 60.0 as mins,
-                    COUNT(*) as count
+                    COUNT(*) as count,
+                    SUM(total_elevation_gain) as elev
                 FROM strava_activities
+                WHERE NOT (activity_type = 'Ride' AND commute = 1)
                 GROUP BY d
                 ORDER BY d DESC LIMIT ?""",
                 (limit,),
@@ -130,17 +167,95 @@ class StravaAdapter(SourceAdapter):
 
                 km = row[1]
                 mins = row[2]
+                elev = row[4] or 0
+
                 hours = int(mins) // 60
                 m = int(mins) % 60
                 dur = f"{hours}時間{m}分" if hours > 0 else f"{m}分"
 
+                elev_str = f" ({int(elev)}m↑)" if elev > 0 else ""
                 activities.append({
                     "time": time_str,
                     "icon": "🚴",
-                    "text": f"運動 {km:.1f}km ({dur})",
-                    "detail": f"{int(row[3])}アクティビティ" if include_detail else None,
+                    "text": f"運動 {km:.1f}km{elev_str}",
+                    "detail": f"{dur}" if include_detail else None,
                     "color": "#FF3366",
                     "sort_date": row[0],
                 })
 
             return activities
+
+
+class StravaCommuteAdapter(SourceAdapter):
+    """Virtual adapter for strava_commute — data written by StravaAdapter.aggregate()."""
+
+    source_id = "strava_commute"
+    display_name = "通勤 (Strava)"
+
+    async def is_configured(self) -> bool:
+        return await has_token("strava")
+
+    async def fetch_and_store(self, from_date: str | None = None) -> tuple[int, int]:
+        return 0, 0  # StravaAdapter handles fetching
+
+    async def aggregate(self) -> None:
+        pass  # StravaAdapter handles aggregation
+
+    async def get_recent_activities(
+        self, limit: int = 8, include_detail: bool = True
+    ) -> list[dict]:
+        async with get_db_context() as db:
+            rows = await db.execute_fetchall(
+                """SELECT SUBSTR(start_date_local, 1, 10) as d,
+                    SUM(distance_meters) / 1000.0 as km,
+                    SUM(moving_time_seconds) / 60.0 as mins,
+                    COUNT(*) as count
+                FROM strava_activities
+                WHERE activity_type = 'Ride' AND commute = 1
+                GROUP BY d
+                ORDER BY d DESC LIMIT ?""",
+                (limit,),
+            )
+
+            activities = []
+            today = date.today()
+            for row in rows:
+                d = date.fromisoformat(row[0])
+                diff = (today - d).days
+                time_str = "今日" if diff == 0 else "1日前" if diff == 1 else f"{diff}日前"
+
+                hours = int(row[2]) // 60
+                m = int(row[2]) % 60
+                dur = f"{hours}時間{m}分" if hours > 0 else f"{m}分"
+
+                activities.append({
+                    "time": time_str,
+                    "icon": "🚲",
+                    "text": f"通勤 {row[1]:.1f}km ({dur})",
+                    "detail": f"{int(row[3])}回" if include_detail else None,
+                    "color": "#FF79C6",
+                    "sort_date": row[0],
+                })
+
+            return activities
+
+
+class StravaRideAdapter(SourceAdapter):
+    """Virtual adapter for strava_ride — data written by StravaAdapter.aggregate()."""
+
+    source_id = "strava_ride"
+    display_name = "ライド (Strava)"
+
+    async def is_configured(self) -> bool:
+        return await has_token("strava")
+
+    async def fetch_and_store(self, from_date: str | None = None) -> tuple[int, int]:
+        return 0, 0
+
+    async def aggregate(self) -> None:
+        pass
+
+    async def get_recent_activities(
+        self, limit: int = 8, include_detail: bool = True
+    ) -> list[dict]:
+        return []  # Covered by StravaAdapter feed

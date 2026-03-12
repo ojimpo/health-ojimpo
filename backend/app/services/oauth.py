@@ -98,6 +98,11 @@ async def store_tokens(source_id: str, token_data: dict):
             "UPDATE source_settings SET status = 'active' WHERE id = ?",
             (source_id,),
         )
+        # Strava OAuth also activates the commute and ride sources
+        if source_id == "strava":
+            await db.execute(
+                "UPDATE source_settings SET status = 'active' WHERE id IN ('strava_commute', 'strava_ride')",
+            )
         await db.commit()
     logger.info("Stored OAuth2 tokens for %s", source_id)
 

@@ -1,6 +1,8 @@
 export const dataSources = [
   { id: 'lastfm', name: '音楽 (Last.fm)', category: '音楽', icon: '♫', phase: 'mvp', color: '#00F0FF' },
   { id: 'strava', name: '運動 (Strava)', category: '運動', icon: '🚴', phase: 'phase2', color: '#FF3366' },
+  { id: 'strava_commute', name: '通勤 (Strava)', category: '通勤', icon: '🚲', phase: 'phase2', color: '#FF79C6' },
+  { id: 'strava_ride', name: 'ライド (Strava)', category: '運動', icon: '🚴', phase: 'phase2', color: '#FF3366' },
   { id: 'oura', name: '睡眠 (Oura)', category: '睡眠', icon: '😴', phase: 'phase2', color: '#BD93F9' },
   { id: 'intervals', name: 'フィットネス (intervals.icu)', category: 'フィットネス', icon: '💪', phase: 'phase2', color: '#50FA7B' },
   { id: 'instagram', name: 'Instagram', category: 'SNS', icon: '📸', phase: 'phase2', color: '#FF9500' },
