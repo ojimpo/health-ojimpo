@@ -1,8 +1,11 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import aiosqlite
+
+logger = logging.getLogger(__name__)
 
 from .config import settings
 
@@ -36,5 +39,12 @@ async def init_db():
     async with get_db_context() as db:
         for sql_file in sorted(migrations_dir.glob("*.sql")):
             sql = sql_file.read_text()
-            await db.executescript(sql)
+            try:
+                await db.executescript(sql)
+            except Exception as e:
+                err = str(e)
+                if "duplicate column" in err or "already exists" in err:
+                    logger.debug("Skipping (already applied): %s", sql_file.name)
+                else:
+                    raise
         await db.commit()

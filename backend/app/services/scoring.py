@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import date, timedelta
 
@@ -79,17 +80,33 @@ async def calculate_source_score(
 
         if score_method == "daily_avg":
             # Average daily values (exclude stress: lower-is-better)
+            # Optionally apply per-category weights (e.g. Oura: readiness 0.6, sleep 0.4)
+            weight_rows = await db.execute_fetchall(
+                "SELECT category_weights FROM source_settings WHERE id = ?",
+                (source_id,),
+            )
+            raw_weights = weight_rows[0][0] if weight_rows and weight_rows[0][0] else None
+            weights = json.loads(raw_weights) if raw_weights else None
+
             rows = await db.execute_fetchall(
-                """SELECT date,
-                          SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as daily_total
+                """SELECT date, category,
+                          SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as val
                 FROM activity_records
                 WHERE source = ? AND date >= ? AND date <= ? AND category != 'stress'
-                GROUP BY date""",
+                GROUP BY date, category""",
                 (source_id, start_date, date_str),
             )
             if not rows or base_value <= 0:
                 return 0.0, 0.0, base_value
-            daily_avg = sum(float(r[1]) for r in rows) / len(rows)
+
+            # Group by date, apply category weights
+            daily_totals: dict[str, float] = {}
+            for row in rows:
+                d, cat, val = row[0], row[1], float(row[2])
+                w = weights.get(cat, 1.0) if weights else 1.0
+                daily_totals[d] = daily_totals.get(d, 0.0) + val * w
+
+            daily_avg = sum(daily_totals.values()) / len(daily_totals)
             score = (daily_avg / base_value) * 100 * coeff
             return score, daily_avg, base_value
 
