@@ -8,6 +8,8 @@ function StateTooltip({ active, payload, label }) {
   const point = payload[0]?.payload
   const healthStatus = point?.health_status
   const culturalStatus = point?.cultural_status
+  const healthScore = point?.health_score
+  const culturalScore = point?.cultural_score
   return (
     <div style={{
       background: 'rgba(10,10,20,0.95)',
@@ -24,12 +26,12 @@ function StateTooltip({ active, payload, label }) {
         <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 10, letterSpacing: 0.5 }}>
           {healthStatus && (
             <span style={{ color: healthStatusConfig[healthStatus]?.color, fontWeight: 600 }}>
-              ● {healthStatus}
+              ● {healthStatus}{healthScore != null ? ` ${healthScore}` : ''}
             </span>
           )}
           {culturalStatus && (
             <span style={{ color: culturalStatusConfig[culturalStatus]?.color, fontWeight: 600 }}>
-              ● {culturalStatus}
+              ● {culturalStatus}{culturalScore != null ? ` ${culturalScore}` : ''}
             </span>
           )}
         </div>

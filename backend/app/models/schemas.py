@@ -29,6 +29,8 @@ class ChartDataPoint(BaseModel):
     weight: float | None = None
     health_status: str | None = None
     cultural_status: str | None = None
+    health_score: float | None = None
+    cultural_score: float | None = None
 
 
 class CategoryCard(BaseModel):
