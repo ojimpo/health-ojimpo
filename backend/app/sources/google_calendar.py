@@ -13,18 +13,18 @@ GCAL_API_BASE = "https://www.googleapis.com/calendar/v3"
 
 SOURCE_CONFIG = {
     "gcal_holiday": {
-        "display_name": "休日予定",
+        "display_name": "外出予定",
         "category": "calendar",
         "icon": "🏖️",
         "color": "#FFB86C",
-        "calendar_id": "primary",
+        "calendar_id": "kou997@gmail.com",
     },
     "gcal_live": {
         "display_name": "ライブ",
         "category": "live",
         "icon": "🎵",
         "color": "#FF79C6",
-        "calendar_id": "primary",  # User can configure via settings
+        "calendar_id": "d04c8ea267059c88c507aba6e4f484917509ea5c1977e4f9bc8d768f71630518@group.calendar.google.com",
     },
 }
 

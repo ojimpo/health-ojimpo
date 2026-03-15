@@ -50,7 +50,7 @@ async def oauth_authorize(source_id: str, request: Request):
         client_id = settings.google_client_id
         if not client_id:
             raise HTTPException(400, "GOOGLE_CLIENT_ID not configured")
-        redirect_uri = str(request.base_url).rstrip("/") + f"/api/oauth/google/callback"
+        redirect_uri = "https://health.ojimpo.com/api/oauth/google/callback"
         params = {
             "client_id": client_id,
             "redirect_uri": redirect_uri,
@@ -95,7 +95,7 @@ async def strava_callback(code: str, request: Request):
 @router.get("/google/callback")
 async def google_callback(code: str, state: str, request: Request):
     """Handle Google OAuth2 callback. Stores tokens for gcal_holiday, gcal_live, and gmail."""
-    redirect_uri = str(request.base_url).rstrip("/") + "/api/oauth/google/callback"
+    redirect_uri = "https://health.ojimpo.com/api/oauth/google/callback"
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
