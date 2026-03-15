@@ -90,7 +90,7 @@ async def calculate_source_score(
 
             rows = await db.execute_fetchall(
                 """SELECT date, category,
-                          SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as val
+                          SUM(raw_value) as val
                 FROM activity_records
                 WHERE source = ? AND date >= ? AND date <= ? AND category != 'stress'
                 GROUP BY date, category""",
@@ -112,7 +112,7 @@ async def calculate_source_score(
 
         # Default: sum method
         rows = await db.execute_fetchall(
-            """SELECT COALESCE(SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END), 0) as total_minutes,
+            """SELECT COALESCE(SUM(raw_value), 0) as total_value,
                       COUNT(DISTINCT date) as days_with_data
             FROM activity_records
             WHERE source = ? AND date >= ? AND date <= ?""",

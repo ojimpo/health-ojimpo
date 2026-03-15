@@ -67,13 +67,13 @@ class LastfmAdapter(SourceAdapter):
                     scrobbled_date,
                     'lastfm',
                     'music',
-                    ROUND(COUNT(*) * ? / 60.0, 1),
-                    COUNT(*),
-                    'tracks',
+                    ROUND(SUM(COALESCE(duration_seconds, ?)) / 60.0, 1),
+                    ROUND(SUM(COALESCE(duration_seconds, ?)) / 60.0, 1),
+                    'minutes',
                     NULL
                 FROM lastfm_scrobbles
                 GROUP BY scrobbled_date""",
-                (settings.default_track_duration_seconds,),
+                (settings.default_track_duration_seconds, settings.default_track_duration_seconds),
             )
             await db.commit()
         logger.info("Last.fm daily aggregation completed")
