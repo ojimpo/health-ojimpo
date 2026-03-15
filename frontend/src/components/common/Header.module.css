@@ -29,8 +29,9 @@
 }
 
 .title {
+  display: inline-block;
   font-family: var(--font-heading);
-  font-size: 32px;
+  font-size: clamp(18px, 5vw, 32px);
   font-weight: 700;
   letter-spacing: 3px;
   background: linear-gradient(135deg, #00F0FF 0%, #BD93F9 50%, #FF3366 100%);

@@ -53,7 +53,7 @@ export default function SharedViewPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      backgroundColor: presentation.bg_color,
+      backgroundColor: isCritical ? presentation.bg_color : 'transparent',
     }}>
       {isCritical && <EvaWarningOverlay />}
 
