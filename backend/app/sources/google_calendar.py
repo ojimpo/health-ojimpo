@@ -92,6 +92,7 @@ class GoogleCalendarAdapter(SourceAdapter):
                     break
 
         stored = 0
+        fetched_ids = []
         async with get_db_context() as db:
             for event in all_events:
                 event_id = event.get("id", "")
@@ -108,9 +109,27 @@ class GoogleCalendarAdapter(SourceAdapter):
                         VALUES (?, ?, ?, ?, ?, ?)""",
                         (event_id, self.source_id, summary, start_date, end_date, self._calendar_id),
                     )
+                    fetched_ids.append(event_id)
                     stored += 1
                 except Exception:
                     logger.exception("Error storing calendar event %s", event_id)
+
+            # Delete events that are within the fetched window but no longer in Google Calendar
+            if fetched_ids:
+                placeholders = ",".join("?" * len(fetched_ids))
+                await db.execute(
+                    f"""DELETE FROM gcal_events
+                    WHERE source = ? AND start_date >= ? AND start_date <= ?
+                    AND id NOT IN ({placeholders})""",
+                    [self.source_id, from_date, date.today().isoformat()] + fetched_ids,
+                )
+            else:
+                # No events returned: clear everything in the window
+                await db.execute(
+                    """DELETE FROM gcal_events
+                    WHERE source = ? AND start_date >= ? AND start_date <= ?""",
+                    (self.source_id, from_date, date.today().isoformat()),
+                )
             await db.commit()
 
         logger.info("%s: stored %d events", self.source_id, stored)
@@ -118,9 +137,13 @@ class GoogleCalendarAdapter(SourceAdapter):
 
     async def aggregate(self) -> None:
         async with get_db_context() as db:
-            # Count events per date
+            # Full rebuild: delete all existing records then re-insert from gcal_events
             await db.execute(
-                """INSERT OR REPLACE INTO activity_records
+                "DELETE FROM activity_records WHERE source = ?",
+                (self.source_id,),
+            )
+            await db.execute(
+                """INSERT INTO activity_records
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
                 SELECT start_date, ?, ?, 0, COUNT(*), '回', NULL
                 FROM gcal_events WHERE source = ?

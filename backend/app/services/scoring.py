@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 from datetime import date, timedelta
 
 from ..database import get_db_context
@@ -17,11 +18,11 @@ async def get_thresholds() -> dict:
         return {row[0]: float(row[1]) for row in rows}
 
 
-async def get_effective_baseline(source_id: str, for_date: str) -> tuple[float, int]:
-    """Get the effective baseline value and aggregation period for a source at a given date.
+async def get_effective_baseline(source_id: str, for_date: str) -> tuple[float, int, float | None]:
+    """Get the effective baseline value, aggregation period, and decay half_life for a source.
 
-    Returns (base_value, aggregation_period_days).
-    Falls back to source_settings defaults if no baseline_history entry exists.
+    Returns (base_value, aggregation_period_days, decay_half_life).
+    decay_half_life is None when the source uses the legacy windowed-sum method.
     """
     async with get_db_context() as db:
         # Check baseline_history first
@@ -41,14 +42,15 @@ async def get_effective_baseline(source_id: str, for_date: str) -> tuple[float, 
             )
             base_value = float(rows[0][0]) if rows else 100.0
 
-        # Get aggregation period
+        # Get aggregation period and decay_half_life
         rows = await db.execute_fetchall(
-            "SELECT aggregation_period FROM source_settings WHERE id = ?",
+            "SELECT aggregation_period, decay_half_life FROM source_settings WHERE id = ?",
             (source_id,),
         )
         period = int(rows[0][0]) if rows else 7
+        half_life = float(rows[0][1]) if rows and rows[0][1] is not None else None
 
-        return base_value, period
+        return base_value, period, half_life
 
 
 async def calculate_source_score(
@@ -58,14 +60,17 @@ async def calculate_source_score(
 
     Returns (score, raw_total, base_value).
 
-    Two scoring methods (determined by source_settings.score_method):
-    - 'sum': score = (period_total / base_value) * 100 * coeff  (default)
+    Scoring methods (determined by source_settings.score_method + decay_half_life):
     - 'daily_avg': score = (avg_daily_value / base_value) * 100 * coeff
-      Uses average of days with data; resilient to missing days.
-      Excludes 'stress' category (lower-is-better, incompatible with sum).
+      Excludes 'stress' category (lower-is-better). decay_half_life ignored.
+    - 'sum' + decay_half_life set: exponential decay weighted sum
+      norm = (base_value / aggregation_period) * (half_life / ln2)
+      score = weighted_sum / norm * 100 * coeff
+    - 'sum' + decay_half_life NULL: legacy windowed sum (fallback)
+      score = (period_total / base_value) * 100 * coeff
     """
     date_str = for_date.isoformat()
-    base_value, period = await get_effective_baseline(source_id, date_str)
+    base_value, period, half_life = await get_effective_baseline(source_id, date_str)
 
     async with get_db_context() as db:
         rows = await db.execute_fetchall(
@@ -76,9 +81,8 @@ async def calculate_source_score(
         classification = rows[0][1] if rows else "baseline"
         score_method = rows[0][2] if rows else "sum"
 
-        start_date = (for_date - timedelta(days=period - 1)).isoformat()
-
         if score_method == "daily_avg":
+            start_date = (for_date - timedelta(days=period - 1)).isoformat()
             # Average daily values (exclude stress: lower-is-better)
             # Optionally apply per-category weights (e.g. Oura: readiness 0.6, sleep 0.4)
             weight_rows = await db.execute_fetchall(
@@ -99,7 +103,6 @@ async def calculate_source_score(
             if not rows or base_value <= 0:
                 return 0.0, 0.0, base_value
 
-            # Group by date, apply category weights
             daily_totals: dict[str, float] = {}
             for row in rows:
                 d, cat, val = row[0], row[1], float(row[2])
@@ -110,28 +113,62 @@ async def calculate_source_score(
             score = (daily_avg / base_value) * 100 * coeff
             return score, daily_avg, base_value
 
-        # Default: sum method
-        rows = await db.execute_fetchall(
-            """SELECT COALESCE(SUM(raw_value), 0) as total_value,
-                      COUNT(DISTINCT date) as days_with_data
-            FROM activity_records
-            WHERE source = ? AND date >= ? AND date <= ?""",
-            (source_id, start_date, date_str),
-        )
-        raw_total = float(rows[0][0]) if rows else 0.0
-        days_with_data = int(rows[0][1]) if rows else 0
+        if half_life is not None:
+            # Exponential decay: fetch up to 5× half_life days of history
+            lookback = int(half_life * 5)
+            start_date = (for_date - timedelta(days=lookback)).isoformat()
 
-    if base_value <= 0:
-        return 0.0, raw_total, base_value
+            rows = await db.execute_fetchall(
+                """SELECT date, SUM(raw_value) as val
+                FROM activity_records
+                WHERE source = ? AND date >= ? AND date <= ?
+                GROUP BY date""",
+                (source_id, start_date, date_str),
+            )
 
-    # Pro-rate base_value only for baseline sources (daily data expected)
-    # Event sources (reading, movies) naturally have sparse data
-    if classification != "event" and days_with_data > 0 and days_with_data < period:
-        adjusted_base = base_value * (days_with_data / period)
-    else:
-        adjusted_base = base_value
+        else:
+            # Legacy windowed sum
+            start_date = (for_date - timedelta(days=period - 1)).isoformat()
+            rows = await db.execute_fetchall(
+                """SELECT COALESCE(SUM(raw_value), 0) as total_value,
+                          COUNT(DISTINCT date) as days_with_data
+                FROM activity_records
+                WHERE source = ? AND date >= ? AND date <= ?""",
+                (source_id, start_date, date_str),
+            )
+            raw_total = float(rows[0][0]) if rows else 0.0
+            days_with_data = int(rows[0][1]) if rows else 0
 
-    score = (raw_total / adjusted_base) * 100 * coeff
+            if base_value <= 0:
+                return 0.0, raw_total, base_value
+
+            if classification != "event" and days_with_data > 0 and days_with_data < period:
+                adjusted_base = base_value * (days_with_data / period)
+            else:
+                adjusted_base = base_value
+
+            score = (raw_total / adjusted_base) * 100 * coeff
+            return score, raw_total, base_value
+
+    if base_value <= 0 or half_life is None:
+        return 0.0, 0.0, base_value
+
+    # Compute exponentially weighted sum
+    # weight(t) = exp(-ln2 * days_ago / half_life)
+    ln2 = math.log(2)
+    weighted_sum = 0.0
+    raw_total = 0.0
+    for row in rows:
+        days_ago = (for_date - date.fromisoformat(row[0])).days
+        weight = math.exp(-ln2 * days_ago / half_life)
+        val = float(row[1])
+        weighted_sum += val * weight
+        raw_total += val
+
+    # Normalize: steady-state sum when maintaining (base_value / period) per day
+    # = rate * half_life / ln2
+    norm_base = (base_value / period) * (half_life / ln2)
+    score = (weighted_sum / norm_base) * 100 * coeff
     return score, raw_total, base_value
 
 
