@@ -570,3 +570,49 @@ Last.fm が 700分 → 100分 に落ちた週（明確な異常）:
 - `scoring.py`: `SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END)` を `SUM(raw_value)` に簡略化
 
 **結果:** 全ソースで `raw_value` の単位が「可処分時間（分）または各ソースのネイティブ単位」として一貫。スコアリングは `raw_value` のみ参照するシンプルな実装になった。
+
+---
+
+## 2026-03-16 追記: 指数減衰の実装と適用範囲の決定
+
+### 実装内容
+
+`source_settings` に `decay_half_life` カラムを追加（migration 012）。
+`scoring.py` の `sum` メソッドに decay 分岐を追加。
+
+```python
+# decay_half_life が設定されているソースのスコア計算
+norm_base = (base_value / aggregation_period) * (half_life / ln2)
+weighted_sum = Σ raw_value[i] × exp(-ln2 × days_ago[i] / half_life)
+score = (weighted_sum / norm_base) × 100 × coeff
+```
+
+正規化の根拠: `base_value / aggregation_period` が1日あたりの期待ペース。
+そのペースで毎日活動し続けた場合の定常加重合計 = `rate × half_life / ln2`。
+これを基準にすることで、基準ペースを維持し続けた時のスコアが100%になる。
+
+### 適用範囲の決定: 90日イベント系ソースのみ
+
+| ソース | decay_half_life | 理由 |
+|--------|----------------|------|
+| gcal_live, gcal_holiday | 30日 | 90日窓のスパイク・切断問題を解消 |
+| bookmeter, filmarks | 30日 | 同上 |
+| その他全ソース（7日・30日系） | NULL（窓方式） | 按分方式の方が適切 |
+
+**全ソースに適用してみたところ失敗した理由:**
+
+図書館（kashidashi）や GitHub など週1〜数回のスパースなソースに decay を適用すると、
+「来ない日のゼロ」が大量にカウントされ、スコアが大幅に過小評価された。
+
+例: kashidashi_cd が decay 適用後に 140% → 58% に急落。
+
+decay の定常状態の仮定は「毎日一定ペースで活動する」ことを前提にしているが、
+スパース活動には成立しない。旧方式（按分）では「活動した日だけ評価する」
+ため、週1回の図書館訪問でも適切にスコア化できていた。
+
+### gcal の幽霊データ問題も同時修正
+
+`aggregate()` が `INSERT OR REPLACE` のみで Google Calendar から削除されたイベントを
+残し続けていた問題を修正。全件削除→再挿入に変更し `gcal_events` と完全同期するようにした。
+`fetch_and_store()` もフェッチ期間内で消えたイベントを `gcal_events` から除去するよう変更。
+

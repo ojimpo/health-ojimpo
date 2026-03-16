@@ -3,6 +3,7 @@ from datetime import date, timedelta
 
 import httpx
 
+from ..config import settings
 from ..database import get_db_context
 from ..services.oauth import get_valid_token, has_token
 from .base import SourceAdapter
@@ -17,14 +18,14 @@ SOURCE_CONFIG = {
         "category": "calendar",
         "icon": "🏖️",
         "color": "#FFB86C",
-        "calendar_id": "kou997@gmail.com",
+        "calendar_id": settings.gcal_holiday_calendar_id or "primary",
     },
     "gcal_live": {
         "display_name": "ライブ",
         "category": "live",
         "icon": "🎵",
         "color": "#FF79C6",
-        "calendar_id": "d04c8ea267059c88c507aba6e4f484917509ea5c1977e4f9bc8d768f71630518@group.calendar.google.com",
+        "calendar_id": settings.gcal_live_calendar_id,
     },
 }
 
