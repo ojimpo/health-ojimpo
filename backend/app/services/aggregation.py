@@ -39,7 +39,7 @@ FRIENDLY_MESSAGES = {
 }
 
 # Map category values to ChartDataPoint fields
-ACTIVITY_CATEGORIES = ["music", "exercise", "commute", "reading", "movie", "sns", "coding", "calendar"]
+ACTIVITY_CATEGORIES = ["music", "exercise", "commute", "reading", "movie", "sns", "coding", "calendar", "live"]
 STATE_CATEGORIES = ["sleep", "readiness", "stress", "weight"]
 
 # Category display labels
@@ -305,7 +305,6 @@ def _map_category(category: str) -> str:
     if category in ACTIVITY_CATEGORIES or category in STATE_CATEGORIES:
         return category
     mapping = {
-        "live": "calendar",
         "shopping": "sns",
         "fitness": "exercise",
     }
@@ -331,6 +330,7 @@ def _make_chart_point(
         sns=round(cat_data.get("sns", 0), 1),
         coding=round(cat_data.get("coding", 0), 1),
         calendar=round(cat_data.get("calendar", 0), 1),
+        live=round(cat_data.get("live", 0), 1),
         sleep=round(cat_data["sleep"], 1) if "sleep" in cat_data else None,
         readiness=round(cat_data["readiness"], 1) if "readiness" in cat_data else None,
         stress=round(cat_data["stress"], 1) if "stress" in cat_data else None,

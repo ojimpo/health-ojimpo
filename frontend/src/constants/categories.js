@@ -7,6 +7,7 @@ export const activityCategories = [
   { key: 'sns', label: 'SNS', color: '#BD93F9' },
   { key: 'coding', label: 'コーディング', color: '#50FA7B' },
   { key: 'calendar', label: '予定', color: '#FFB86C' },
+  { key: 'live', label: '音楽ライブ', color: '#FF79C6' },
 ]
 
 export const stateCategories = [

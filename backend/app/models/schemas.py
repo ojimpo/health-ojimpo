@@ -24,6 +24,7 @@ class ChartDataPoint(BaseModel):
     sns: float = 0
     coding: float = 0
     calendar: float = 0
+    live: float = 0
     sleep: float | None = None
     readiness: float | None = None
     stress: float | None = None
