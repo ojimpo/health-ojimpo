@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { useSiteInfo } from '../hooks/useSiteInfo'
@@ -16,6 +16,7 @@ import EvaWarningOverlay from '../components/shared/EvaWarningOverlay'
 import FriendlyMessage from '../components/shared/FriendlyMessage'
 
 export default function SharedViewPage() {
+  useEffect(() => { document.title = 'HEALTH.OJIMPO.COM' }, [])
   const { token } = useParams()
   const { username } = useSiteInfo()
   const [timeRange, setTimeRange] = useState('3m')

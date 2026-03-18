@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { healthStatusConfig, culturalStatusConfig } from '../constants/statusConfig'
@@ -14,6 +14,7 @@ import StateCards from '../components/dashboard/StateCards'
 import RecentActivity from '../components/dashboard/RecentActivity'
 
 export default function DashboardPage() {
+  useEffect(() => { document.title = 'ADMIN | HEALTH.OJIMPO.COM' }, [])
   const [timeRange, setTimeRange] = useState('3m')
   const [hoveredCategory, setHoveredCategory] = useState(null)
   const { data, loading, error, refreshing } = useApi(`/api/dashboard?range=${timeRange}`)

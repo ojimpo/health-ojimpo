@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi, apiPut } from '../hooks/useApi'
 import Header from '../components/common/Header'
@@ -22,6 +22,7 @@ const CATEGORY_LABELS = {
 }
 
 export default function SettingsPage() {
+  useEffect(() => { document.title = 'SETTINGS | HEALTH.OJIMPO.COM' }, [])
   const [categoryFilter, setCategoryFilter] = useState('all')
   const { data: sources, refetch: refetchSources } = useApi('/api/settings/sources')
   const { data: thresholds } = useApi('/api/settings/thresholds')
