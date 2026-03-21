@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
 
     # Google Calendar IDs (personal calendars)
-    gcal_holiday_calendar_id: str = "primary"
+    gcal_private_calendar_id: str = ""
     gcal_live_calendar_id: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}

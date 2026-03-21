@@ -7,7 +7,7 @@ export const dataSources = [
   { id: 'intervals', name: 'フィットネス (intervals.icu)', category: 'フィットネス', icon: '💪', phase: 'phase2', color: '#50FA7B' },
   { id: 'instagram', name: 'Instagram', category: 'SNS', icon: '📸', phase: 'phase2', color: '#FF9500' },
   { id: 'twitter', name: 'Twitter', category: 'SNS', icon: '🐦', phase: 'phase2', color: '#1DA1F2' },
-  { id: 'gcal_holiday', name: '休日予定 (Google Calendar)', category: '予定', icon: '🏖️', phase: 'phase2', color: '#FFB86C' },
+  { id: 'gcal_private', name: 'プライベート予定 (Google Calendar)', category: '予定', icon: '🏖️', phase: 'phase2', color: '#FFB86C' },
   { id: 'gcal_live', name: 'ライブ (Google Calendar)', category: 'ライブ', icon: '🎵', phase: 'phase2', color: '#FF79C6' },
   { id: 'gmail', name: '買い物 (Gmail)', category: '買い物', icon: '🛒', phase: 'phase2', color: '#8BE9FD' },
   { id: 'kashidashi', name: '図書館 (kashidashi)', category: '読書', icon: '📚', phase: 'phase2', color: '#ADFF2F' },

@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 GCAL_API_BASE = "https://www.googleapis.com/calendar/v3"
 
 SOURCE_CONFIG = {
-    "gcal_holiday": {
-        "display_name": "外出予定",
+    "gcal_private": {
+        "display_name": "プライベート予定",
         "category": "calendar",
         "icon": "🏖️",
         "color": "#FFB86C",
-        "calendar_id": settings.gcal_holiday_calendar_id or "primary",
+        "calendar_id": settings.gcal_private_calendar_id,
     },
     "gcal_live": {
         "display_name": "ライブ",
@@ -43,13 +43,13 @@ class GoogleCalendarAdapter(SourceAdapter):
 
     async def is_configured(self) -> bool:
         # Both gcal sources share the same Google OAuth token
-        return await has_token("gcal_holiday") or await has_token("gcal_live")
+        return await has_token("gcal_private") or await has_token("gcal_live")
 
     async def fetch_and_store(self, from_date: str | None = None) -> tuple[int, int]:
         # Try to get token from either gcal source
         token = await get_valid_token(self.source_id)
         if not token:
-            other = "gcal_live" if self.source_id == "gcal_holiday" else "gcal_holiday"
+            other = "gcal_live" if self.source_id == "gcal_private" else "gcal_private"
             token = await get_valid_token(other)
         if not token:
             logger.warning("Google Calendar: no valid token")

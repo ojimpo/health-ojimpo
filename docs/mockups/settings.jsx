@@ -14,7 +14,7 @@ const dataSources = [
     config: { period: 7, unit: "日", baseValue: 280, baseUnit: "分", history: [] } },
   { id: "twitter", name: "Twitter", category: "SNS", icon: "🐦", type: "activity", classification: "baseline", phase: "phase2", status: "coming_soon", color: "#1DA1F2",
     config: { period: 7, unit: "日", baseValue: 140, baseUnit: "分", history: [] } },
-  { id: "gcal_holiday", name: "Googleカレンダー（休日予定）", category: "予定", icon: "📅", type: "activity", classification: "event", phase: "phase2", status: "coming_soon", color: "#FFB86C",
+  { id: "gcal_private", name: "Googleカレンダー（プライベート予定）", category: "予定", icon: "📅", type: "activity", classification: "event", phase: "phase2", status: "coming_soon", color: "#FFB86C",
     config: { period: 30, unit: "日", baseValue: 8, baseUnit: "件", history: [] } },
   { id: "gcal_live", name: "Googleカレンダー（ライブ）", category: "音楽ライブ", icon: "🎸", type: "activity", classification: "event", phase: "phase2", status: "coming_soon", color: "#FF79C6",
     config: { period: 90, unit: "日", baseValue: 3, baseUnit: "回", history: [{ from: "2026-03-01", value: 3, unit: "回", memo: "月1ペースが目標" }] } },

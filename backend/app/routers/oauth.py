@@ -45,7 +45,7 @@ async def oauth_authorize(source_id: str, request: Request):
         }
         return RedirectResponse(f"{config['authorize_url']}?{urlencode(params)}")
 
-    elif source_id in ("gcal_holiday", "gcal_live", "gmail"):
+    elif source_id in ("gcal_private", "gcal_live", "gmail"):
         config = OAUTH_CONFIGS["google"]
         client_id = settings.google_client_id
         if not client_id:
@@ -121,7 +121,7 @@ async def google_callback(code: str, state: str, request: Request):
     }
 
     # Store tokens for all Google sources
-    for source_id in ("gcal_holiday", "gcal_live", "gmail"):
+    for source_id in ("gcal_private", "gcal_live", "gmail"):
         await store_tokens(source_id, token_data)
 
     return RedirectResponse("/settings")

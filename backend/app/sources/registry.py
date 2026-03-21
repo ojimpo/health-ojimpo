@@ -32,7 +32,7 @@ def register_adapters():
         StravaAdapter(),
         StravaCommuteAdapter(),
         StravaRideAdapter(),
-        GoogleCalendarAdapter("gcal_holiday"),
+        GoogleCalendarAdapter("gcal_private"),
         GoogleCalendarAdapter("gcal_live"),
         GmailAdapter(),
         SyncGatewayAdapter("filmarks", "filmarks", "映画 (Filmarks)", "movie", "🎬", "#FF9500", "本", "映画を視聴 "),

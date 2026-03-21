@@ -41,7 +41,7 @@ async def _refresh_token(source_id: str, refresh_token: str) -> str | None:
         token_url = "https://www.strava.com/oauth/token"
         client_id = settings.strava_client_id
         client_secret = settings.strava_client_secret
-    elif source_id in ("gcal_holiday", "gcal_live", "gmail"):
+    elif source_id in ("gcal_private", "gcal_live", "gmail"):
         token_url = "https://oauth2.googleapis.com/token"
         client_id = settings.google_client_id
         client_secret = settings.google_client_secret
