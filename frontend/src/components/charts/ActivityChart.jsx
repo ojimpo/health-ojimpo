@@ -76,7 +76,12 @@ function ChartTooltip({ active, payload, label, mode }) {
   )
 }
 
-function getTickInterval(dataLength) {
+function getTickInterval(dataLength, mobile) {
+  if (mobile) {
+    if (dataLength <= 30) return 6
+    if (dataLength <= 90) return 20
+    return 8
+  }
   if (dataLength <= 30) return 0
   if (dataLength <= 90) return 6
   return 3
@@ -114,11 +119,35 @@ function prepareScoreData(data) {
   })
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  useState(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  })
+  return isMobile
+}
+
+function getYMax(data) {
+  if (!data?.length) return undefined
+  const totals = data.map(d =>
+    activityCategories.reduce((sum, c) => sum + (d[c.key] || 0), 0)
+  )
+  const sorted = [...totals].sort((a, b) => a - b)
+  // Use 90th percentile to clip extreme spikes
+  // Use median to aggressively clip spikes
+  const median = sorted[Math.floor(sorted.length * 0.5)]
+  return Math.ceil(median * 1.2 / 50) * 50
+}
+
 export default function ActivityChart({ data, hoveredCategory, height = 350, saturation }) {
   const [mode, setMode] = useState('ACTIVITY')
+  const isMobile = useIsMobile()
   const isOverlay = mode !== 'ACTIVITY'
   const chartData = mode === 'SCORE' ? prepareScoreData(data) : data
-  const chartHeight = 450
+  const chartHeight = isMobile ? 300 : 450
+  const yMax = getYMax(data)
 
   return (
     <div className={styles.container} style={saturation != null ? { filter: `saturate(${saturation})` } : undefined}>
@@ -167,13 +196,14 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
           <XAxis
             dataKey="date"
-            interval={getTickInterval(data?.length || 0)}
+            interval={getTickInterval(data?.length || 0, isMobile)}
             tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.25)', fontFamily: "'JetBrains Mono'" }}
             axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
             tickLine={false}
           />
           <YAxis
             yAxisId="left"
+            domain={[0, yMax || 'auto']}
             tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.2)', fontFamily: "'JetBrains Mono'" }}
             axisLine={false}
             tickLine={false}
@@ -208,8 +238,8 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
               strokeWidth={hoveredCategory == null || hoveredCategory === c.key ? 1.5 : 0.5}
               fill={`url(#grad-${c.key})`}
               strokeOpacity={isOverlay ? 0.3 : (hoveredCategory == null || hoveredCategory === c.key ? 0.8 : 0.15)}
-              dot={{ r: 2, fill: isOverlay ? '#555' : c.color, strokeWidth: 0, opacity: isOverlay ? 0.2 : (hoveredCategory == null || hoveredCategory === c.key ? 0.8 : 0.15) }}
-              activeDot={{ r: 4, fill: isOverlay ? '#555' : c.color, stroke: '#07080F', strokeWidth: 2 }}
+              dot={isMobile ? false : { r: 2, fill: isOverlay ? '#555' : c.color, strokeWidth: 0, opacity: isOverlay ? 0.2 : (hoveredCategory == null || hoveredCategory === c.key ? 0.8 : 0.15) }}
+              activeDot={isMobile ? false : { r: 4, fill: isOverlay ? '#555' : c.color, stroke: '#07080F', strokeWidth: 2 }}
             />
           ))}
           {/* SCORE mode: health score lines */}
