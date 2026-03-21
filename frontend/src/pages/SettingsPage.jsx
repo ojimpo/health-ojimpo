@@ -22,7 +22,7 @@ const CATEGORY_LABELS = {
 }
 
 export default function SettingsPage() {
-  useEffect(() => { document.title = 'SETTINGS | HEALTH.OJIMPO.COM' }, [])
+  useEffect(() => { document.title = 'settings | health.ojimpo.com' }, [])
   const [categoryFilter, setCategoryFilter] = useState('all')
   const { data: sources, refetch: refetchSources } = useApi('/api/settings/sources')
   const { data: thresholds } = useApi('/api/settings/thresholds')

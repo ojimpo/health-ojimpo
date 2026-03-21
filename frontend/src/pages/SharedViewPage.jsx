@@ -16,7 +16,7 @@ import EvaWarningOverlay from '../components/shared/EvaWarningOverlay'
 import FriendlyMessage from '../components/shared/FriendlyMessage'
 
 export default function SharedViewPage() {
-  useEffect(() => { document.title = 'HEALTH.OJIMPO.COM' }, [])
+  useEffect(() => { document.title = 'health.ojimpo.com' }, [])
   const { token } = useParams()
   const { username } = useSiteInfo()
   const [timeRange, setTimeRange] = useState('3m')
