@@ -20,7 +20,7 @@ function StateTooltip({ active, payload, label }) {
       fontFamily: 'var(--font-mono)',
     }}>
       <div style={{ color: '#BD93F9', fontSize: 11, marginBottom: 8, letterSpacing: 1 }}>
-        WEEK {label}
+        {label}
       </div>
       {(healthStatus || culturalStatus) && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 10, letterSpacing: 0.5 }}>
@@ -46,6 +46,12 @@ function StateTooltip({ active, payload, label }) {
   )
 }
 
+function getTickInterval(dataLength) {
+  if (dataLength <= 30) return 0
+  if (dataLength <= 90) return 6
+  return 3
+}
+
 export default function ConditionChart({ data, height = 200, saturation }) {
   const hasData = data?.some(d => d.sleep != null || d.readiness != null || d.stress != null || d.weight != null)
 
@@ -63,6 +69,7 @@ export default function ConditionChart({ data, height = 200, saturation }) {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
               <XAxis
                 dataKey="date"
+                interval={getTickInterval(data?.length || 0)}
                 tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.25)', fontFamily: "'JetBrains Mono'" }}
                 axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
                 tickLine={false}
