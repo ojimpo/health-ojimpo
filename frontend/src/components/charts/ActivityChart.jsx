@@ -1,14 +1,21 @@
 import { useState } from 'react'
 import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
-import { activityCategories } from '../../constants/categories'
+import { activityCategories, stateCategories } from '../../constants/categories'
 import { healthStatusConfig, culturalStatusConfig } from '../../constants/statusConfig'
 import styles from './ActivityChart.module.css'
 
-function ActivityTooltip({ active, payload, label }) {
+const MODES = ['ACTIVITY', 'SCORE', 'CONDITION']
+
+const OVERLAY_KEYS = new Set([
+  'health_score', 'cultural_score',
+  'health_normal', 'health_caution', 'health_critical',
+  'cultural_rich', 'cultural_moderate', 'cultural_low',
+  ...stateCategories.map(c => c.key),
+])
+
+function ChartTooltip({ active, payload, label, mode }) {
   if (!active || !payload || !payload.length) return null
-  // Filter out score lines from payload
-  const scoreKeys = new Set(['health_score', 'cultural_score', 'health_normal', 'health_caution', 'health_critical', 'cultural_rich', 'cultural_moderate', 'cultural_low'])
-  const areaPayload = payload.filter(p => !scoreKeys.has(p.dataKey))
+  const areaPayload = payload.filter(p => !OVERLAY_KEYS.has(p.dataKey))
   const total = areaPayload.reduce((s, p) => s + (p.value || 0), 0)
   const point = payload[0]?.payload
   const healthStatus = point?.health_status
@@ -41,7 +48,17 @@ function ActivityTooltip({ active, payload, label }) {
           )}
         </div>
       )}
-      {[...areaPayload].reverse().map((p, i) => {
+      {mode === 'CONDITION' && stateCategories.map((c, i) => {
+        const v = point?.[c.key]
+        if (v == null) return null
+        return (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 24, fontSize: 12, color: c.color, padding: '2px 0' }}>
+            <span style={{ opacity: 0.8 }}>{c.label}</span>
+            <span style={{ fontWeight: 600 }}>{v}</span>
+          </div>
+        )
+      })}
+      {mode !== 'CONDITION' && [...areaPayload].reverse().map((p, i) => {
         const cat = activityCategories.find(c => c.key === p.dataKey)
         return (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 24, fontSize: 12, color: cat?.color || p.color, padding: '2px 0' }}>
@@ -50,40 +67,38 @@ function ActivityTooltip({ active, payload, label }) {
           </div>
         )
       })}
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', color: '#fff', fontSize: 12, fontWeight: 700 }}>
-        <span>TOTAL</span><span>{Math.round(total)}</span>
-      </div>
+      {mode !== 'CONDITION' && (
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', color: '#fff', fontSize: 12, fontWeight: 700 }}>
+          <span>TOTAL</span><span>{Math.round(total)}</span>
+        </div>
+      )}
     </div>
   )
 }
 
 function getTickInterval(dataLength) {
-  if (dataLength <= 30) return 0        // 1M: show all
-  if (dataLength <= 90) return 6        // 3M daily: show every 7th
-  return 3                              // 1Y weekly: show every 4th
+  if (dataLength <= 30) return 0
+  if (dataLength <= 90) return 6
+  return 3
 }
 
 function prepareScoreData(data) {
   if (!data) return data
   return data.map((point, i) => {
     const prev = i > 0 ? data[i - 1] : null
-    const next = i < data.length - 1 ? data[i + 1] : null
     const out = { ...point }
 
-    // Health score segments
     const hs = point.health_status
     const hv = point.health_score
     out.health_normal = hs === 'NORMAL' ? hv : null
     out.health_caution = hs === 'CAUTION' ? hv : null
     out.health_critical = hs === 'CRITICAL' ? hv : null
-    // Bridge: duplicate value at boundaries so lines connect
     if (prev && prev.health_status !== hs && prev.health_score != null) {
       if (prev.health_status === 'NORMAL') out.health_normal = hv
       if (prev.health_status === 'CAUTION') out.health_caution = hv
       if (prev.health_status === 'CRITICAL') out.health_critical = hv
     }
 
-    // Cultural score segments
     const cs = point.cultural_status
     const cv = point.cultural_score
     out.cultural_rich = cs === 'RICH' ? cv : null
@@ -100,39 +115,52 @@ function prepareScoreData(data) {
 }
 
 export default function ActivityChart({ data, hoveredCategory, height = 350, saturation }) {
-  const [showScores, setShowScores] = useState(false)
-  const chartData = showScores ? prepareScoreData(data) : data
+  const [mode, setMode] = useState('ACTIVITY')
+  const isOverlay = mode !== 'ACTIVITY'
+  const chartData = mode === 'SCORE' ? prepareScoreData(data) : data
+  const chartHeight = 450
 
   return (
     <div className={styles.container} style={saturation != null ? { filter: `saturate(${saturation})` } : undefined}>
-      <button
-        onClick={() => setShowScores(s => !s)}
-        style={{
-          position: 'absolute',
-          top: 8,
-          right: 8,
-          zIndex: 10,
-          background: showScores ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)',
-          border: `1px solid ${showScores ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)'}`,
-          borderRadius: 4,
-          padding: '3px 8px',
-          fontSize: 9,
-          letterSpacing: 1,
-          color: showScores ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)',
-          cursor: 'pointer',
-          fontFamily: 'var(--font-mono)',
-          transition: 'all 0.2s ease',
-        }}
-      >
-        SCORE
-      </button>
-      <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={chartData} margin={{ top: 10, right: showScores ? 40 : 10, left: 10, bottom: 0 }}>
+      <div style={{
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        zIndex: 10,
+        display: 'flex',
+        gap: 0,
+        borderRadius: 4,
+        overflow: 'hidden',
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}>
+        {MODES.map(m => (
+          <button
+            key={m}
+            onClick={() => setMode(m)}
+            style={{
+              background: mode === m ? 'rgba(255,255,255,0.1)' : 'transparent',
+              border: 'none',
+              borderRight: m !== MODES[MODES.length - 1] ? '1px solid rgba(255,255,255,0.08)' : 'none',
+              padding: '3px 8px',
+              fontSize: 9,
+              letterSpacing: 1,
+              color: mode === m ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.25)',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+      <ResponsiveContainer width="100%" height={chartHeight}>
+        <ComposedChart data={chartData} margin={{ top: 10, right: isOverlay ? 40 : 10, left: 10, bottom: 0 }}>
           <defs>
             {activityCategories.map(c => (
               <linearGradient key={c.key} id={`grad-${c.key}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={showScores ? '#888' : c.color} stopOpacity={hoveredCategory == null || hoveredCategory === c.key ? 0.6 : 0.1} />
-                <stop offset="100%" stopColor={showScores ? '#888' : c.color} stopOpacity={hoveredCategory == null || hoveredCategory === c.key ? 0.08 : 0.02} />
+                <stop offset="0%" stopColor={isOverlay ? '#888' : c.color} stopOpacity={hoveredCategory == null || hoveredCategory === c.key ? 0.6 : 0.1} />
+                <stop offset="100%" stopColor={isOverlay ? '#888' : c.color} stopOpacity={hoveredCategory == null || hoveredCategory === c.key ? 0.08 : 0.02} />
               </linearGradient>
             ))}
           </defs>
@@ -151,14 +179,14 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
             tickLine={false}
           />
           <YAxis
-            yAxisId="score"
+            yAxisId="right"
             orientation="right"
-            domain={[0, 140]}
-            tick={showScores ? { fontSize: 10, fill: 'rgba(255,255,255,0.15)', fontFamily: "'JetBrains Mono'" } : false}
+            domain={mode === 'CONDITION' ? [0, 100] : [0, 140]}
+            tick={isOverlay ? { fontSize: 10, fill: 'rgba(255,255,255,0.15)', fontFamily: "'JetBrains Mono'" } : false}
             axisLine={false}
             tickLine={false}
-            ticks={[40, 70, 100]}
-            width={showScores ? 30 : 0}
+            ticks={mode === 'CONDITION' ? [20, 40, 60, 80] : [40, 70, 100]}
+            width={isOverlay ? 30 : 0}
           />
           <ReferenceLine
             yAxisId="left"
@@ -167,7 +195,8 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
             strokeDasharray="6 4"
             label={{ value: 'BASE 100', position: 'insideTopLeft', fill: 'rgba(255,255,255,0.12)', fontSize: 9, fontFamily: "'JetBrains Mono'" }}
           />
-          <Tooltip content={<ActivityTooltip />} />
+          <Tooltip content={<ChartTooltip mode={mode} />} />
+          {/* Stacked area — always shown, monochrome in overlay modes */}
           {activityCategories.map(c => (
             <Area
               key={c.key}
@@ -175,15 +204,15 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
               type="linear"
               dataKey={c.key}
               stackId="1"
-              stroke={showScores ? '#555' : c.color}
+              stroke={isOverlay ? '#555' : c.color}
               strokeWidth={hoveredCategory == null || hoveredCategory === c.key ? 1.5 : 0.5}
               fill={`url(#grad-${c.key})`}
-              strokeOpacity={showScores ? 0.3 : (hoveredCategory == null || hoveredCategory === c.key ? 0.8 : 0.15)}
-              dot={{ r: 2, fill: showScores ? '#555' : c.color, strokeWidth: 0, opacity: showScores ? 0.2 : (hoveredCategory == null || hoveredCategory === c.key ? 0.8 : 0.15) }}
-              activeDot={{ r: 4, fill: showScores ? '#555' : c.color, stroke: '#07080F', strokeWidth: 2 }}
+              strokeOpacity={isOverlay ? 0.3 : (hoveredCategory == null || hoveredCategory === c.key ? 0.8 : 0.15)}
+              dot={{ r: 2, fill: isOverlay ? '#555' : c.color, strokeWidth: 0, opacity: isOverlay ? 0.2 : (hoveredCategory == null || hoveredCategory === c.key ? 0.8 : 0.15) }}
+              activeDot={{ r: 4, fill: isOverlay ? '#555' : c.color, stroke: '#07080F', strokeWidth: 2 }}
             />
           ))}
-          {/* Health score lines — colored by status */}
+          {/* SCORE mode: health score lines */}
           {[
             { key: 'health_normal', color: '#50FA7B' },
             { key: 'health_caution', color: '#FFB86C' },
@@ -191,18 +220,18 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
           ].map(s => (
             <Line
               key={s.key}
-              yAxisId="score"
+              yAxisId="right"
               type="linear"
               dataKey={s.key}
               stroke={s.color}
               strokeWidth={2}
-              hide={!showScores}
-              dot={showScores ? { r: 2, fill: s.color, strokeWidth: 0 } : false}
-              activeDot={showScores ? { r: 4, fill: s.color, stroke: '#07080F', strokeWidth: 2 } : false}
+              hide={mode !== 'SCORE'}
+              dot={mode === 'SCORE' ? { r: 2, fill: s.color, strokeWidth: 0 } : false}
+              activeDot={mode === 'SCORE' ? { r: 4, fill: s.color, stroke: '#07080F', strokeWidth: 2 } : false}
               connectNulls={false}
             />
           ))}
-          {/* Cultural score lines — colored by status */}
+          {/* SCORE mode: cultural score lines */}
           {[
             { key: 'cultural_rich', color: '#00F0FF' },
             { key: 'cultural_moderate', color: '#FFB86C' },
@@ -210,15 +239,30 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
           ].map(s => (
             <Line
               key={s.key}
-              yAxisId="score"
+              yAxisId="right"
               type="linear"
               dataKey={s.key}
               stroke={s.color}
               strokeWidth={2}
               strokeDasharray="6 3"
-              hide={!showScores}
-              dot={showScores ? { r: 2, fill: s.color, strokeWidth: 0 } : false}
-              activeDot={showScores ? { r: 4, fill: s.color, stroke: '#07080F', strokeWidth: 2 } : false}
+              hide={mode !== 'SCORE'}
+              dot={mode === 'SCORE' ? { r: 2, fill: s.color, strokeWidth: 0 } : false}
+              activeDot={mode === 'SCORE' ? { r: 4, fill: s.color, stroke: '#07080F', strokeWidth: 2 } : false}
+              connectNulls={false}
+            />
+          ))}
+          {/* CONDITION mode: state lines */}
+          {stateCategories.map(c => (
+            <Line
+              key={c.key}
+              yAxisId="right"
+              type="linear"
+              dataKey={c.key}
+              stroke={c.color}
+              strokeWidth={2}
+              hide={mode !== 'CONDITION'}
+              dot={mode === 'CONDITION' ? { r: 2, fill: c.color, strokeWidth: 0 } : false}
+              activeDot={mode === 'CONDITION' ? { r: 4, fill: c.color, stroke: '#07080F', strokeWidth: 2 } : false}
               connectNulls={false}
             />
           ))}

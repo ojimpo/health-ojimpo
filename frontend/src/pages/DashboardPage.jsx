@@ -7,7 +7,6 @@ import Footer from '../components/common/Footer'
 import StatusCard from '../components/common/StatusCard'
 import TimeRangeSelector from '../components/common/TimeRangeSelector'
 import ActivityChart from '../components/charts/ActivityChart'
-import ConditionChart from '../components/charts/ConditionChart'
 import TrendAnalysis from '../components/dashboard/TrendAnalysis'
 import CategoryCards from '../components/dashboard/CategoryCards'
 import StateCards from '../components/dashboard/StateCards'
@@ -90,7 +89,6 @@ export default function DashboardPage() {
         pointerEvents: refreshing ? 'none' : 'auto',
       }}>
         <ActivityChart data={data.activity_chart} hoveredCategory={hoveredCategory} />
-        <ConditionChart data={data.condition_chart} />
       </div>
 
       {/* Category cards */}

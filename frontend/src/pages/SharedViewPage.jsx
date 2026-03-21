@@ -8,7 +8,6 @@ import Footer from '../components/common/Footer'
 import StatusCard from '../components/common/StatusCard'
 import TimeRangeSelector from '../components/common/TimeRangeSelector'
 import ActivityChart from '../components/charts/ActivityChart'
-import ConditionChart from '../components/charts/ConditionChart'
 import TrendAnalysis from '../components/dashboard/TrendAnalysis'
 import CategoryCards from '../components/dashboard/CategoryCards'
 import RecentActivity from '../components/dashboard/RecentActivity'
@@ -105,11 +104,6 @@ export default function SharedViewPage() {
           <ActivityChart
             data={data.activity_chart}
             height={300}
-            saturation={presentation.chart_saturation}
-          />
-          <ConditionChart
-            data={data.condition_chart}
-            height={180}
             saturation={presentation.chart_saturation}
           />
         </div>
