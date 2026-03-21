@@ -78,9 +78,9 @@ def _get_range_params(time_range: TimeRange) -> tuple[int, str]:
         case TimeRange.ONE_MONTH:
             return 30, "daily"
         case TimeRange.THREE_MONTHS:
-            return 90, "weekly"
+            return 90, "daily"
         case TimeRange.ONE_YEAR:
-            return 365, "monthly"
+            return 365, "weekly"
 
 
 # State categories that Oura writes but aren't in source_settings individually.

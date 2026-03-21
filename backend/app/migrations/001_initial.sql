@@ -89,7 +89,7 @@ INSERT OR IGNORE INTO source_settings (id, name, category, icon, display_type, c
     ('intervals',   'フィットネス (intervals.icu)','フィットネス','💪','state', 'baseline', 'phase2', 'coming_soon', '#50FA7B', 1, 0, 30, 50,  'CTL',     1.0, 4),
     ('instagram',   'Instagram',                 'SNS',     '📸', 'activity', 'baseline', 'phase2', 'coming_soon', '#FF9500', 1, 1, 7,  420, 'minutes', 0.6, 5),
     ('twitter',     'Twitter',                   'SNS',     '🐦', 'activity', 'baseline', 'phase2', 'coming_soon', '#1DA1F2', 1, 1, 7,  210, 'minutes', 0.6, 6),
-    ('gcal_holiday','休日予定 (Google Calendar)', '予定',    '🏖️', 'activity', 'event',    'phase2', 'coming_soon', '#FFB86C', 1, 1, 90, 6,   '回',      1.2, 7),
+    ('gcal_private','プライベート予定 (Google Calendar)', '予定',    '🏖️', 'activity', 'event',    'phase2', 'coming_soon', '#FFB86C', 1, 1, 90, 6,   '回',      1.2, 7),
     ('gcal_live',   'ライブ (Google Calendar)',   'ライブ',  '🎵', 'activity', 'event',    'phase2', 'coming_soon', '#FF79C6', 1, 1, 90, 3,   '回',      1.2, 8),
     ('gmail',       '買い物 (Gmail)',             '買い物',  '🛒', 'activity', 'baseline', 'phase2', 'coming_soon', '#8BE9FD', 1, 0, 30, 10,  '回',      0.6, 9),
     ('kashidashi',  '図書館 (kashidashi)',        '読書',    '📚', 'activity', 'event',    'phase2', 'coming_soon', '#ADFF2F', 1, 1, 90, 12,  '冊',      1.0, 10),

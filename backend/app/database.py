@@ -43,7 +43,7 @@ async def init_db():
                 await db.executescript(sql)
             except Exception as e:
                 err = str(e)
-                if "duplicate column" in err or "already exists" in err:
+                if "duplicate column" in err or "already exists" in err or "UNIQUE constraint" in err:
                     logger.debug("Skipping (already applied): %s", sql_file.name)
                 else:
                     raise

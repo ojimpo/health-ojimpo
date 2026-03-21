@@ -21,7 +21,7 @@ function ActivityTooltip({ active, payload, label }) {
       fontFamily: 'var(--font-mono)',
     }}>
       <div style={{ color: '#00F0FF', fontSize: 11, marginBottom: 8, letterSpacing: 1 }}>
-        WEEK {label}
+        {label}
       </div>
       {(healthStatus || culturalStatus) && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 10, letterSpacing: 0.5 }}>
@@ -50,6 +50,12 @@ function ActivityTooltip({ active, payload, label }) {
   )
 }
 
+function getTickInterval(dataLength) {
+  if (dataLength <= 30) return 0        // 1M: show all
+  if (dataLength <= 90) return 6        // 3M daily: show every 7th
+  return 3                              // 1Y weekly: show every 4th
+}
+
 export default function ActivityChart({ data, hoveredCategory, height = 350, saturation }) {
   return (
     <div className={styles.container} style={saturation != null ? { filter: `saturate(${saturation})` } : undefined}>
@@ -66,6 +72,7 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
           <XAxis
             dataKey="date"
+            interval={getTickInterval(data?.length || 0)}
             tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.25)', fontFamily: "'JetBrains Mono'" }}
             axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
             tickLine={false}
