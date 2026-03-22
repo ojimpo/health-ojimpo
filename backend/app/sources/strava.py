@@ -89,7 +89,7 @@ class StravaAdapter(SourceAdapter):
 
     async def aggregate(self) -> None:
         async with get_db_context() as db:
-            # 1) strava (exercise, minutes): all non-commute activities — baseline
+            # 1) strava (exercise, minutes): ALL activities including commute — baseline
             await db.execute(
                 """INSERT OR REPLACE INTO activity_records
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
@@ -102,40 +102,24 @@ class StravaAdapter(SourceAdapter):
                     'min',
                     NULL
                 FROM strava_activities
-                WHERE NOT (activity_type = 'Ride' AND commute = 1)
                 GROUP BY SUBSTR(start_date_local, 1, 10)"""
             )
-            # 2) strava_commute (commute, minutes): commute rides — baseline
+            # 2) strava_voluntary (exercise, minutes): non-commute activities — event bonus
+            #    Voluntary exercise (rides, runs, swims, etc.) excluding commute.
+            #    Double-counts with strava total; rewards self-initiated activity.
             await db.execute(
                 """INSERT OR REPLACE INTO activity_records
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
                 SELECT
                     SUBSTR(start_date_local, 1, 10),
-                    'strava_commute',
-                    'commute',
+                    'strava_voluntary',
+                    'exercise',
                     ROUND(SUM(moving_time_seconds) / 60.0, 1),
                     ROUND(SUM(moving_time_seconds) / 60.0, 1),
                     'min',
                     NULL
                 FROM strava_activities
-                WHERE activity_type = 'Ride' AND commute = 1
-                GROUP BY SUBSTR(start_date_local, 1, 10)"""
-            )
-            # 3) strava_ride (exercise, km): non-commute Ride distance — event bonus
-            #    Double-counts with strava minutes; rewards long rides
-            await db.execute(
-                """INSERT OR REPLACE INTO activity_records
-                (date, source, category, minutes, raw_value, raw_unit, metadata)
-                SELECT
-                    SUBSTR(start_date_local, 1, 10),
-                    'strava_ride',
-                    'exercise',
-                    0,
-                    ROUND(SUM(distance_meters) / 1000.0, 1),
-                    'km',
-                    NULL
-                FROM strava_activities
-                WHERE activity_type = 'Ride' AND commute = 0
+                WHERE NOT (activity_type = 'Ride' AND commute = 1)
                 GROUP BY SUBSTR(start_date_local, 1, 10)"""
             )
             await db.commit()
@@ -152,7 +136,6 @@ class StravaAdapter(SourceAdapter):
                     COUNT(*) as count,
                     SUM(total_elevation_gain) as elev
                 FROM strava_activities
-                WHERE NOT (activity_type = 'Ride' AND commute = 1)
                 GROUP BY d
                 ORDER BY d DESC LIMIT ?""",
                 (limit,),
@@ -240,11 +223,11 @@ class StravaCommuteAdapter(SourceAdapter):
             return activities
 
 
-class StravaRideAdapter(SourceAdapter):
-    """Virtual adapter for strava_ride — data written by StravaAdapter.aggregate()."""
+class StravaVoluntaryAdapter(SourceAdapter):
+    """Virtual adapter for strava_voluntary — data written by StravaAdapter.aggregate()."""
 
-    source_id = "strava_ride"
-    display_name = "ライド (Strava)"
+    source_id = "strava_voluntary"
+    display_name = "自発的運動 (Strava)"
 
     async def is_configured(self) -> bool:
         return await has_token("strava")
