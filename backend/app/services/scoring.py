@@ -60,6 +60,11 @@ async def calculate_source_score(
 
     Returns (score, raw_total, base_value).
 
+    When for_date is today, uses "yesterday window + today bonus" approach:
+    the main window covers yesterday back to (period) days, and any data
+    recorded today is added on top. This prevents incomplete today data
+    from dragging down the score while still reflecting new activity immediately.
+
     Scoring methods (determined by source_settings.score_method + decay_half_life):
     - 'daily_avg': score = (avg_daily_value / base_value) * 100 * coeff
       Excludes 'stress' category (lower-is-better). decay_half_life ignored.
@@ -69,7 +74,14 @@ async def calculate_source_score(
     - 'sum' + decay_half_life NULL: legacy windowed sum (fallback)
       score = (period_total / base_value) * 100 * coeff
     """
-    date_str = for_date.isoformat()
+    # When calculating for today, shift the window to end at yesterday
+    # so that incomplete today data doesn't penalize the score.
+    # Today's data is added as a bonus on top.
+    is_today = for_date == date.today()
+    window_end = for_date - timedelta(days=1) if is_today else for_date
+
+    date_str = window_end.isoformat()
+    today_str = for_date.isoformat() if is_today else None
     base_value, period, half_life = await get_effective_baseline(source_id, date_str)
 
     async with get_db_context() as db:
@@ -82,7 +94,7 @@ async def calculate_source_score(
         score_method = rows[0][2] if rows else "sum"
 
         if score_method == "daily_avg":
-            start_date = (for_date - timedelta(days=period - 1)).isoformat()
+            start_date = (window_end - timedelta(days=period - 1)).isoformat()
             # Average daily values (exclude stress: lower-is-better)
             # Optionally apply per-category weights (e.g. Oura: readiness 0.6, sleep 0.4)
             weight_rows = await db.execute_fetchall(
@@ -109,6 +121,20 @@ async def calculate_source_score(
                 w = weights.get(cat, 1.0) if weights else 1.0
                 daily_totals[d] = daily_totals.get(d, 0.0) + val * w
 
+            # For today: include today's data in the average if it exists (bonus)
+            if today_str:
+                today_rows = await db.execute_fetchall(
+                    """SELECT date, category, SUM(raw_value) as val
+                    FROM activity_records
+                    WHERE source = ? AND date = ? AND category != 'stress'
+                    GROUP BY date, category""",
+                    (source_id, today_str),
+                )
+                for row in today_rows:
+                    d, cat, val = row[0], row[1], float(row[2])
+                    w = weights.get(cat, 1.0) if weights else 1.0
+                    daily_totals[d] = daily_totals.get(d, 0.0) + val * w
+
             daily_avg = sum(daily_totals.values()) / len(daily_totals)
             score = (daily_avg / base_value) * 100 * coeff
             return score, daily_avg, base_value
@@ -116,7 +142,7 @@ async def calculate_source_score(
         if half_life is not None:
             # Exponential decay: fetch up to 5× half_life days of history
             lookback = int(half_life * 5)
-            start_date = (for_date - timedelta(days=lookback)).isoformat()
+            start_date = (window_end - timedelta(days=lookback)).isoformat()
 
             rows = await db.execute_fetchall(
                 """SELECT date, SUM(raw_value) as val
@@ -125,10 +151,20 @@ async def calculate_source_score(
                 GROUP BY date""",
                 (source_id, start_date, date_str),
             )
+            # Include today's data as bonus if available
+            if today_str:
+                today_rows = await db.execute_fetchall(
+                    """SELECT date, SUM(raw_value) as val
+                    FROM activity_records
+                    WHERE source = ? AND date = ?
+                    GROUP BY date""",
+                    (source_id, today_str),
+                )
+                rows = list(rows) + list(today_rows)
 
         else:
             # Legacy windowed sum
-            start_date = (for_date - timedelta(days=period - 1)).isoformat()
+            start_date = (window_end - timedelta(days=period - 1)).isoformat()
             rows = await db.execute_fetchall(
                 """SELECT COALESCE(SUM(raw_value), 0) as total_value,
                           COUNT(DISTINCT date) as days_with_data
@@ -138,6 +174,20 @@ async def calculate_source_score(
             )
             raw_total = float(rows[0][0]) if rows else 0.0
             days_with_data = int(rows[0][1]) if rows else 0
+
+            # Add today's data as bonus if available
+            if today_str:
+                today_rows = await db.execute_fetchall(
+                    """SELECT COALESCE(SUM(raw_value), 0) as total_value,
+                              COUNT(DISTINCT date) as has_data
+                    FROM activity_records
+                    WHERE source = ? AND date = ?""",
+                    (source_id, today_str),
+                )
+                today_total = float(today_rows[0][0]) if today_rows else 0.0
+                today_has_data = int(today_rows[0][1]) if today_rows else 0
+                raw_total += today_total
+                days_with_data += today_has_data
 
             if base_value <= 0:
                 return 0.0, raw_total, base_value
