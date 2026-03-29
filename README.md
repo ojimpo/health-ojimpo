@@ -32,6 +32,10 @@
 
 健康状態に応じて演出が変化する共有ビュー。CRITICAL時にはエヴァ暴走モード風の警告演出で、友人に「最近大丈夫？」と声をかけてもらうきっかけを作る。活動の詳細は抽象化し、プライバシーを保ちつつ状態だけを伝える。
 
+### コンディション通知（ライフライン機能）
+
+ダッシュボードを毎日見に来なくても、コンディションが低下した時点でLINEやメールで自動通知する。「気にかけてあげてください」から「生存確認してあげてください」まで、深刻度に応じたメッセージで友人の行動を促す。CRITICAL時には個人LINEへの直接連絡リンクを表示し、通知から本人への連絡までの動線を確保する。共有ビューの下部からLINE友だち追加やメール購読ができる。
+
 ## 技術スタック
 
 | レイヤー | 技術 |
@@ -43,18 +47,21 @@
 | 外部公開 | Cloudflare Tunnel |
 
 ```
-┌─────────────────────────────────────────┐
-│  Cloudflare Tunnel                      │
-│    ↓                                    │
-│  nginx (Frontend)  ←→  FastAPI (Backend)│
-│         :80               :8000         │
-│                      ↓                  │
-│                   SQLite                │
-│                      ↑                  │
-│              Scheduler (6h)             │
-│                ↓                        │
-│    Last.fm / Oura / Strava / ...        │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│  Cloudflare Tunnel                           │
+│    ↓                                         │
+│  nginx (Frontend)  ←→  FastAPI (Backend)     │
+│         :80               :8000              │
+│                      ↓                       │
+│                   SQLite                     │
+│                      ↑                       │
+│              Scheduler (6h)                  │
+│           ┌──────┴──────┐                    │
+│       Ingest         Notify                  │
+│           ↓              ↓                   │
+│  Last.fm / Oura /   LINE Messaging API       │
+│  Strava / ...       Gmail API                │
+└──────────────────────────────────────────────┘
 ```
 
 ## 対応データソース
@@ -131,12 +138,17 @@ docker compose up -d --build
 | `STRAVA_CLIENT_SECRET` | - | Strava OAuth2 クライアントシークレット |
 | `GOOGLE_CLIENT_ID` | - | Google OAuth2 クライアント ID |
 | `GOOGLE_CLIENT_SECRET` | - | Google OAuth2 クライアントシークレット |
-| `GCAL_HOLIDAY_CALENDAR_ID` | - | 外出予定カレンダーのID（デフォルト: `primary`） |
+| `GCAL_PRIVATE_CALENDAR_ID` | - | プライベート予定カレンダーのID |
 | `GCAL_LIVE_CALENDAR_ID` | - | ライブ専用カレンダーのID |
 | `SYNC_GATEWAY_BASE_URL` | - | sync-gateway の URL |
 | `GITHUB_TOKEN` | - | GitHub Fine-grained PAT |
 | `GITHUB_USER` | - | GitHub ユーザー名 |
 | `KASHIDASHI_BASE_URL` | - | kashidashi API の URL |
+| `LINE_CHANNEL_ACCESS_TOKEN` | - | LINE Messaging API チャネルアクセストークン |
+| `LINE_CHANNEL_SECRET` | - | LINE Messaging API チャネルシークレット |
+| `LINE_BOT_BASIC_ID` | - | LINE 公式アカウントのベーシック ID（`@xxx`） |
+| `PERSONAL_LINE_URL` | - | CRITICAL 通知時に表示する個人 LINE URL |
+| `NOTIFICATION_ENABLED` | - | 通知機能の有効化（`true` / `false`） |
 
 ## デプロイ
 
