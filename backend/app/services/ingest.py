@@ -73,3 +73,10 @@ async def run_all_ingest():
             await run_ingest_pipeline(adapter.source_id)
         except Exception:
             logger.exception("Failed to ingest %s", adapter.source_id)
+
+    # Check for status transitions and send notifications
+    try:
+        from .notification import check_and_notify
+        await check_and_notify()
+    except Exception:
+        logger.exception("Notification check failed")

@@ -32,6 +32,12 @@ services:
       - CLAUDE_PROJECTS_DIR=/home/kouki/.claude/projects
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_USER=${GITHUB_USER:-}
+      # Notification
+      - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN:-}
+      - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET:-}
+      - LINE_BOT_BASIC_ID=${LINE_BOT_BASIC_ID:-}
+      - PERSONAL_LINE_URL=${PERSONAL_LINE_URL:-}
+      - NOTIFICATION_ENABLED=${NOTIFICATION_ENABLED:-false}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s

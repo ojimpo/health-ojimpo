@@ -185,3 +185,20 @@ class IngestStatusResponse(BaseModel):
     records_total: int
     status: str
     next_scheduled: str | None
+
+
+# --- Notification ---
+
+
+class EmailSubscribeRequest(BaseModel):
+    email: str
+
+
+class SubscriberResponse(BaseModel):
+    id: int
+    channel: str
+    channel_id: str
+    display_name: str | None
+    verified: bool
+    active: bool
+    created_at: str

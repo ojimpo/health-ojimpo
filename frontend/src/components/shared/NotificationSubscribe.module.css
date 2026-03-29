@@ -1,0 +1,168 @@
+.section {
+  margin-bottom: 32px;
+}
+
+.header {
+  font-family: var(--font-heading);
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.subtitle {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-subtle);
+  margin-bottom: 20px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+.cardLabel {
+  font-family: var(--font-heading);
+  font-size: 10px;
+  letter-spacing: 2px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lineLabelColor {
+  color: #06C755;
+}
+
+.emailLabelColor {
+  color: var(--cyan);
+}
+
+.lineContent {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.qrPlaceholder {
+  width: 96px;
+  height: 96px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(6, 199, 85, 0.2);
+  background: rgba(6, 199, 85, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.qrGrid {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  gap: 1px;
+  opacity: 0.3;
+}
+
+.qrCell {
+  background: #06C755;
+  border-radius: 1px;
+}
+
+.lineInfo {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-subtle);
+  line-height: 1.6;
+}
+
+.lineId {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: rgba(6, 199, 85, 0.5);
+  margin-top: 8px;
+}
+
+.emailForm {
+  display: flex;
+  gap: 8px;
+}
+
+.emailInput {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.emailInput::placeholder {
+  color: var(--text-muted);
+}
+
+.emailInput:focus {
+  border-color: rgba(0, 240, 255, 0.3);
+}
+
+.submitBtn {
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-family: var(--font-heading);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--cyan);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.submitBtn:hover {
+  background: rgba(0, 240, 255, 0.14);
+  border-color: rgba(0, 240, 255, 0.4);
+}
+
+.emailNote {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 10px;
+}
+
+.successMsg {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--cyan);
+  padding: 8px 0;
+}
+
+.errorMsg {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--pink);
+  margin-top: 10px;
+}

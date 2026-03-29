@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
 from .database import init_db
-from .routers import dashboard, ingest, settings, shared
+from .routers import dashboard, ingest, notification, settings, shared
 from .routers import oauth
 from .scheduler import start_scheduler, stop_scheduler
 from .sources.registry import register_adapters
@@ -44,6 +44,7 @@ app.include_router(shared.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(ingest.router, prefix="/api")
 app.include_router(oauth.router, prefix="/api")
+app.include_router(notification.router, prefix="/api")
 
 
 @app.get("/api/health")

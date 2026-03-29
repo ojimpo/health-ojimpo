@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     gcal_private_calendar_id: str = ""
     gcal_live_calendar_id: str = ""
 
+    # Notification - LINE Messaging API
+    line_channel_access_token: str = ""
+    line_channel_secret: str = ""
+    line_bot_basic_id: str = ""
+    personal_line_url: str = ""
+
+    # Notification
+    notification_enabled: bool = False
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

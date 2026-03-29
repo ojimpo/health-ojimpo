@@ -13,6 +13,7 @@ import CategoryCards from '../components/dashboard/CategoryCards'
 import RecentActivity from '../components/dashboard/RecentActivity'
 import EvaWarningOverlay from '../components/shared/EvaWarningOverlay'
 import FriendlyMessage from '../components/shared/FriendlyMessage'
+import NotificationSubscribe from '../components/shared/NotificationSubscribe'
 
 export default function SharedViewPage() {
   useEffect(() => { document.title = 'health.ojimpo.com' }, [])
@@ -113,6 +114,9 @@ export default function SharedViewPage() {
 
         {/* Recent activity (dimmed for CRITICAL) */}
         <RecentActivity activities={data.recent_activities} dimmed={isCritical} />
+
+        {/* Notification subscribe */}
+        <NotificationSubscribe />
 
         {/* Admin link (subtle) */}
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
