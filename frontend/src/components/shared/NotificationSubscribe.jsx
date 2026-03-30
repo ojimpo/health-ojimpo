@@ -86,9 +86,13 @@ export default function NotificationSubscribe() {
               <div className={styles.lineInfo}>
                 友だち追加で通知を受け取れます
               </div>
-              <div className={styles.lineId}>
-                {lineInfo?.available ? lineInfo.bot_basic_id : 'Coming soon'}
-              </div>
+              {lineInfo?.available ? (
+                <a href={lineInfo.add_friend_url} target="_blank" rel="noopener noreferrer" className={styles.lineLink}>
+                  友だち追加する
+                </a>
+              ) : (
+                <div className={styles.lineId}>Coming soon</div>
+              )}
             </div>
           </div>
         </div>

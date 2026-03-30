@@ -101,6 +101,25 @@
   margin-top: 8px;
 }
 
+.lineLink {
+  display: inline-block;
+  margin-top: 10px;
+  font-family: var(--font-heading);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #06C755;
+  text-decoration: none;
+  padding: 6px 14px;
+  border: 1px solid rgba(6, 199, 85, 0.25);
+  border-radius: var(--radius-sm);
+  transition: all 0.2s;
+}
+
+.lineLink:hover {
+  background: rgba(6, 199, 85, 0.1);
+  border-color: rgba(6, 199, 85, 0.4);
+}
+
 .emailForm {
   display: flex;
   gap: 8px;
