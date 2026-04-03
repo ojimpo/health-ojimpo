@@ -32,6 +32,9 @@ services:
       - CLAUDE_PROJECTS_DIR=/home/kouki/.claude/projects
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_USER=${GITHUB_USER:-}
+      # NextDNS
+      - NEXTDNS_API_KEY=${NEXTDNS_API_KEY:-}
+      - NEXTDNS_PROFILE_ID=${NEXTDNS_PROFILE_ID:-}
       # Notification
       - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN:-}
       - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET:-}

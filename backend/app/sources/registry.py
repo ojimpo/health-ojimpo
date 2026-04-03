@@ -13,33 +13,32 @@ def register_adapters():
     from .kashidashi import KashidashiCDAdapter
     from .oura import OuraAdapter
     from .intervals_icu import IntervalsAdapter
-    from .screen_time import ScreenTimeAdapter
     from .strava import StravaAdapter, StravaCommuteAdapter, StravaVoluntaryAdapter
     from .google_calendar import GoogleCalendarAdapter
-    from .gmail import GmailAdapter
     from .claude_local import ClaudeLocalAdapter
     from .github import GitHubAdapter
     from .openai_usage import OpenAIUsageAdapter
     from .sync_gateway import SyncGatewayAdapter
+    from .nextdns_shopping import NextDNSShoppingAdapter
+    from .nextdns_sns import NextDNSSNSAdapter
 
     adapters = [
         LastfmAdapter(),
         KashidashiCDAdapter(),
         OuraAdapter(),
         IntervalsAdapter(),
-        ScreenTimeAdapter("instagram"),
-        ScreenTimeAdapter("twitter"),
         StravaAdapter(),
         StravaCommuteAdapter(),  # kept for backward compat, disabled in DB
         StravaVoluntaryAdapter(),
         GoogleCalendarAdapter("gcal_private"),
         GoogleCalendarAdapter("gcal_live"),
-        GmailAdapter(),
         SyncGatewayAdapter("filmarks", "filmarks", "映画 (Filmarks)", "movie", "🎬", "#FF9500", "本", "映画を視聴 "),
         SyncGatewayAdapter("bookmeter", "bookmeter", "読書メーター", "reading", "📖", "#ADFF2F", "冊", "本を読了 "),
         ClaudeLocalAdapter(),
         GitHubAdapter(),
         OpenAIUsageAdapter(),
+        NextDNSShoppingAdapter(),
+        NextDNSSNSAdapter(),
     ]
     for adapter in adapters:
         SOURCE_ADAPTERS[adapter.source_id] = adapter

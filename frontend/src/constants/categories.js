@@ -8,6 +8,7 @@ export const activityCategories = [
   { key: 'coding', label: 'コーディング', color: '#50FA7B' },
   { key: 'calendar', label: '予定', color: '#FFB86C' },
   { key: 'live', label: '音楽ライブ', color: '#FF79C6' },
+  { key: 'shopping', label: '買い物', color: '#8BE9FD' },
 ]
 
 export const stateCategories = [

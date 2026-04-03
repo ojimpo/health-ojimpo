@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     gcal_private_calendar_id: str = ""
     gcal_live_calendar_id: str = ""
 
+    # NextDNS
+    nextdns_api_key: str = ""
+    nextdns_profile_id: str = ""
+
     # Notification - LINE Messaging API
     line_channel_access_token: str = ""
     line_channel_secret: str = ""

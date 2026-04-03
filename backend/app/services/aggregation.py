@@ -39,7 +39,7 @@ FRIENDLY_MESSAGES = {
 }
 
 # Map category values to ChartDataPoint fields
-ACTIVITY_CATEGORIES = ["music", "exercise", "commute", "reading", "movie", "sns", "coding", "calendar", "live"]
+ACTIVITY_CATEGORIES = ["music", "exercise", "commute", "reading", "movie", "sns", "coding", "calendar", "live", "shopping"]
 STATE_CATEGORIES = ["sleep", "readiness", "stress", "weight"]
 
 # Category display labels
@@ -343,11 +343,10 @@ async def _get_chart_data(
 
 
 def _map_category(category: str) -> str:
-    """Map category to ChartDataPoint field name. 'live' maps to 'calendar', 'shopping'/'fitness' to 'sns'."""
+    """Map category to ChartDataPoint field name."""
     if category in ACTIVITY_CATEGORIES or category in STATE_CATEGORIES:
         return category
     mapping = {
-        "shopping": "sns",
         "fitness": "exercise",
     }
     return mapping.get(category, category)
