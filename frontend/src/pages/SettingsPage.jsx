@@ -12,7 +12,7 @@ const CATEGORY_LABELS = {
   reading: '読書',
   movie: '映画',
   sns: 'SNS',
-  coding: 'コーディング',
+  coding: 'コード',
   calendar: '予定',
   live: 'ライブ',
   shopping: '買い物',

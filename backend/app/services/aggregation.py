@@ -50,9 +50,9 @@ CATEGORY_LABELS = {
     "reading": "読書",
     "movie": "映画",
     "sns": "SNS",
-    "coding": "コーディング",
+    "coding": "コード",
     "calendar": "予定",
-    "live": "音楽ライブ",
+    "live": "ライブ",
     "shopping": "買い物",
     "fitness": "フィットネス",
 }
