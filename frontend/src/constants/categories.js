@@ -1,7 +1,6 @@
 export const activityCategories = [
   { key: 'music', label: '音楽', color: '#00F0FF' },
   { key: 'exercise', label: '運動', color: '#FF3366' },
-  { key: 'commute', label: '通勤', color: '#FF79C6' },
   { key: 'reading', label: '読書', color: '#ADFF2F' },
   { key: 'movie', label: '映画', color: '#FF9500' },
   { key: 'sns', label: 'SNS', color: '#BD93F9' },

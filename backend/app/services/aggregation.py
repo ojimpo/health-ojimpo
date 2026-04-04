@@ -39,14 +39,13 @@ FRIENDLY_MESSAGES = {
 }
 
 # Map category values to ChartDataPoint fields
-ACTIVITY_CATEGORIES = ["music", "exercise", "commute", "reading", "movie", "sns", "coding", "calendar", "live", "shopping", "vitality"]
+ACTIVITY_CATEGORIES = ["music", "exercise", "reading", "movie", "sns", "coding", "calendar", "live", "shopping", "vitality"]
 STATE_CATEGORIES = ["sleep", "readiness", "stress", "weight"]
 
 # Category display labels
 CATEGORY_LABELS = {
     "music": "音楽",
     "exercise": "運動",
-    "commute": "通勤",
     "reading": "読書",
     "movie": "映画",
     "sns": "SNS",
@@ -62,7 +61,6 @@ CATEGORY_LABELS = {
 CATEGORY_COLORS = {
     "music": "#00F0FF",
     "exercise": "#FF3366",
-    "commute": "#FF79C6",
     "reading": "#ADFF2F",
     "movie": "#FF9500",
     "sns": "#FF9500",
@@ -367,13 +365,14 @@ def _make_chart_point(
         date=date_label,
         music=round(cat_data.get("music", 0), 1),
         exercise=round(cat_data.get("exercise", 0), 1),
-        commute=round(cat_data.get("commute", 0), 1),
         reading=round(cat_data.get("reading", 0), 1),
         movie=round(cat_data.get("movie", 0), 1),
         sns=round(cat_data.get("sns", 0), 1),
         coding=round(cat_data.get("coding", 0), 1),
         calendar=round(cat_data.get("calendar", 0), 1),
         live=round(cat_data.get("live", 0), 1),
+        shopping=round(cat_data.get("shopping", 0), 1),
+        vitality=round(cat_data.get("vitality", 0), 1),
         sleep=round(cat_data["sleep"], 1) if "sleep" in cat_data else None,
         readiness=round(cat_data["readiness"], 1) if "readiness" in cat_data else None,
         stress=round(cat_data["stress"], 1) if "stress" in cat_data else None,
