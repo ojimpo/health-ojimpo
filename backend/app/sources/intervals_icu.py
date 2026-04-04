@@ -65,7 +65,7 @@ class IntervalsAdapter(SourceAdapter):
             await db.execute(
                 """INSERT OR REPLACE INTO activity_records
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
-                SELECT date, 'intervals', 'fitness', 0, COALESCE(ctl, 0), 'CTL', NULL
+                SELECT date, 'intervals', 'ctl', 0, COALESCE(ctl, 0), 'CTL', NULL
                 FROM intervals_daily WHERE ctl IS NOT NULL"""
             )
             await db.commit()

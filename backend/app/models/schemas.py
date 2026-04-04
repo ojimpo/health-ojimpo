@@ -32,6 +32,7 @@ class ChartDataPoint(BaseModel):
     stress: float | None = None
     weight: float | None = None
     outing: float | None = None
+    ctl: float | None = None
     health_status: str | None = None
     cultural_status: str | None = None
     health_score: float | None = None

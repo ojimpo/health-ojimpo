@@ -18,4 +18,5 @@ export const stateCategories = [
   { key: 'stress', label: 'Stress', color: '#FF3366' },
   { key: 'weight', label: 'Weight', color: '#F8F8F2' },
   { key: 'outing', label: '外出', color: '#FFB86C' },
+  { key: 'ctl', label: 'CTL', color: '#50FA7B' },
 ]
