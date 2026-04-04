@@ -212,27 +212,28 @@
 
 ### 3.2 データソース一覧
 
-| # | データソース | 取得方式 | 取得データ | 指標分類 | 表示カテゴリ | フェーズ |
+| # | データソース | 取得方式 | 取得データ | 指標分類 | 表示カテゴリ | ステータス |
 |---|------------|---------|----------|---------|------------|--------|
-| 1 | Last.fm | 公式API | 音楽再生履歴・再生時間 | ベースライン | 活動量 | **MVP** |
-| 2a | Strava (strava) | 公式API | 非通勤アクティビティの運動時間（分） | ベースライン | 活動量 | Phase 2 |
-| 2b | Strava (strava_commute) | 公式API | 通勤Rideの運動時間（分） | ベースライン | 活動量 | Phase 2 |
-| 2c | Strava (strava_ride) | 公式API | 非通勤Rideの距離（km）※分と二重加算 | イベント | 活動量 | Phase 2 |
-| 3 | Oura | 公式API | Readiness Score、Sleep Score、Stress Score | ベースライン | 状態 | Phase 2 |
-| 4 | intervals.icu | 公式API | CTL、FTP等 | ベースライン | 状態 | Phase 2 |
-| 5 | Instagram | Screen Time Network | アプリ使用時間 | ベースライン | 活動量 | Phase 2 |
-| 6 | Twitter | Screen Time Network | アプリ使用時間 | ベースライン | 活動量 | Phase 2 |
-| 7 | Googleカレンダー（休日予定） | 公式API | 休日の予定件数 | イベント | 活動量 | Phase 2 |
-| 8 | Googleカレンダー（ライブ） | 公式API | 音楽ライブの参加記録（専用カレンダーから） | イベント | 活動量 | Phase 2 |
-| 9 | Gmail | 公式API | EC注文確認メール件数（Amazon、楽天等） | ベースライン | 活動量 | Phase 2 |
-| 10 | kashidashi | 自作API（稼働済み、同一サーバー上） | 図書館貸出記録（貸出件数・資料種別・返却状況） | イベント | 活動量 | Phase 2 |
-| 11 | 読書メーター | 専用APIアプリ構築 + OpenClawスクレイピング | 読了記録（冊数・日付） | イベント | 活動量 | Phase 3 |
-| 12 | Filmarks | 専用APIアプリ構築 + OpenClawスクレイピング | 映画鑑賞記録 | イベント | 活動量 | Phase 3 |
-| 13 | GitHub | 公式API | コミット数・コントリビューション | イベント | 活動量 | Phase 3 |
-| 14 | Anthropic Admin API | 公式API | Claude Codeトークン使用量（日次） | イベント | 活動量 | Phase 3 |
-| 15 | OpenAI Usage API | 公式API | Codexトークン使用量（日次） | イベント | 活動量 | Phase 3 |
-| 16 | スマートバスマット | 要調査 | 体重・測定有無 | ベースライン | 状態 | Phase 3 |
-| 17 | Spotify（ポッドキャスト） | 公式API | ポッドキャスト聴取履歴 | ベースライン | 活動量 | Phase 3 |
+| 1 | Last.fm | 公式API | 音楽再生履歴・再生時間 | ベースライン | 活動量（音楽） | **稼働中** |
+| 2 | Strava | OAuth2 | 運動時間（分）・距離（km） | ベースライン | 活動量（運動） | **稼働中** |
+| 3 | Oura | 公式API | Sleep / Readiness / Stress Score | ベースライン | 状態 | **稼働中** |
+| 4 | intervals.icu | API Key | CTL（Chronic Training Load） | モニター | 状態（CTL） | **稼働中** |
+| 5 | NextDNS SNS | NextDNS API | Instagram/Twitter/Reddit等のDNSクエリ数 | ベースライン | 活動量（SNS） | **稼働中** |
+| 6 | NextDNS Shopping | NextDNS API | ECサイト（Amazon/ヨドバシ等）のDNSクエリ数 | イベント | 活動量（買い物） | **稼働中** |
+| 7 | NextDNS Vitality | NextDNS API | アダルトコンテンツ系DNSクエリ数（集計値のみ保存） | ベースライン | 活動量（活力） | **稼働中** |
+| 8 | NextDNS Outing | NextDNS API | iPhoneのcellularクエリ比率（外出度%） | health_only | 状態（外出%）+ 活動量（外出） | **稼働中** |
+| 9 | Stash | GraphQL API（ローカル） | 再生履歴・再生回数 | ベースライン | 活動量（活力） | **稼働中** |
+| 10 | Googleカレンダー（プライベート） | OAuth2 | プライベート予定件数 | イベント | 活動量（予定） | **稼働中** |
+| 11 | Googleカレンダー（ライブ） | OAuth2 | 音楽ライブの参加記録 | イベント | 活動量（ライブ） | **稼働中** |
+| 12 | kashidashi | 自作API | 図書館貸出記録（CD） | イベント | 活動量（音楽） | **稼働中** |
+| 13 | 読書メーター | sync-gateway経由 | 読了記録（冊数・日付） | イベント | 活動量（読書） | **稼働中** |
+| 14 | Filmarks | sync-gateway経由 | 映画鑑賞記録 | イベント | 活動量（映画） | **稼働中** |
+| 15 | GitHub | Fine-grained PAT | コミット数 | イベント | 活動量（コード） | **稼働中** |
+| 16 | Claude Code | ローカルJSONL集計 | トークン使用量（日次） | イベント | 活動量（コード） | **稼働中** |
+| — | ~~Instagram / Twitter（iOS Shortcut）~~ | ~~Webhook~~ | — | — | — | NextDNS SNSに移行 |
+| — | ~~Gmail（購買履歴）~~ | ~~OAuth2~~ | — | — | — | NextDNS Shoppingに移行 |
+| — | OpenAI | Admin API | — | — | — | 対応予定なし |
+| — | Spotify Podcasts | 公式API | — | — | — | Coming Soon |
 
 ### 3.3 フェーズ戦略
 

@@ -47,43 +47,64 @@
 | 外部公開 | Cloudflare Tunnel |
 
 ```
-┌──────────────────────────────────────────────┐
-│  Cloudflare Tunnel                           │
-│    ↓                                         │
-│  nginx (Frontend)  ←→  FastAPI (Backend)     │
-│         :80               :8000              │
-│                      ↓                       │
-│                   SQLite                     │
-│                      ↑                       │
-│              Scheduler (6h)                  │
-│           ┌──────┴──────┐                    │
-│       Ingest         Notify                  │
-│           ↓              ↓                   │
-│  Last.fm / Oura /   LINE Messaging API       │
-│  Strava / ...       Gmail API                │
-└──────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────┐
+│  Cloudflare Tunnel                                │
+│    ↓                                              │
+│  nginx (Frontend)  ←→  FastAPI (Backend)          │
+│         :80               :8000                   │
+│                      ↓                            │
+│                   SQLite                          │
+│                      ↑                            │
+│              Scheduler (6h)                       │
+│           ┌──────┴──────┐                         │
+│       Ingest         Notify                       │
+│           ↓              ↓                        │
+│  Last.fm / Oura /   LINE Messaging API            │
+│  Strava / NextDNS /                               │
+│  Stash / intervals.icu /                          │
+│  sync-gateway / ...                               │
+└───────────────────────────────────────────────────┘
 ```
 
 ## 対応データソース
 
-| ソース | 取得方式 | ステータス |
-|--------|---------|-----------|
-| Last.fm | 公式 API | 稼働中 |
-| Oura Ring | 公式 API | 稼働中 |
-| Strava（ライド・通勤） | OAuth2 | 稼働中 |
-| Google Calendar（外出・ライブ） | OAuth2 | 稼働中 |
-| Instagram / Twitter | iOS Shortcut → Webhook | 稼働中 |
-| kashidashi（図書館CD貸出） | 自作 API | 稼働中 |
-| 読書メーター | sync-gateway 経由 | 稼働中 |
-| Filmarks（映画） | sync-gateway 経由 | 稼働中 |
-| GitHub | Fine-grained PAT | 稼働中 |
-| Claude Code | ローカル JSONL 集計 | 稼働中 |
-| Gmail（購買履歴） | OAuth2 | 稼働中 |
-| intervals.icu | API Key | 準備中 |
-| OpenAI | Admin API | 準備中 |
-| Spotify Podcasts | — | Coming Soon |
+### 活動量系（ACTIVITY タブ積み上げ）
 
-全17データソースに対応予定。設定画面に全ソースが表示され、未対応のものは「Coming Soon」として表示される。
+| ソース | カテゴリ | 取得方式 | ステータス |
+|--------|---------|---------|-----------|
+| Last.fm | 音楽 | 公式 API | 稼働中 |
+| Strava | 運動 | OAuth2 | 稼働中 |
+| Google Calendar（プライベート） | 予定 | OAuth2 | 稼働中 |
+| Google Calendar（ライブ） | ライブ | OAuth2 | 稼働中 |
+| kashidashi（図書館CD貸出） | 音楽 | 自作 API | 稼働中 |
+| 読書メーター | 読書 | sync-gateway 経由 | 稼働中 |
+| Filmarks（映画） | 映画 | sync-gateway 経由 | 稼働中 |
+| GitHub | コード | Fine-grained PAT | 稼働中 |
+| Claude Code | コード | ローカル JSONL 集計 | 稼働中 |
+| NextDNS SNS | SNS | NextDNS API | 稼働中 |
+| NextDNS Shopping | 買い物 | NextDNS API | 稼働中 |
+| NextDNS Vitality | 活力 | NextDNS API | 稼働中 |
+| NextDNS Outing | 外出 | NextDNS API | 稼働中 |
+| Stash | 活力 | GraphQL API（ローカル） | 稼働中 |
+
+### 状態系（CONDITION タブ折れ線）
+
+| ソース | カテゴリ | 取得方式 | ステータス |
+|--------|---------|---------|-----------|
+| Oura Ring | Sleep / Readiness / Stress | 公式 API | 稼働中 |
+| NextDNS Outing | 外出 % | NextDNS API | 稼働中 |
+| intervals.icu | CTL | API Key | 稼働中 |
+
+### 廃止・未対応
+
+| ソース | 備考 |
+|--------|------|
+| Instagram / Twitter（iOS Shortcut） | NextDNS SNS に移行（2026-04） |
+| Gmail（購買履歴） | NextDNS Shopping に移行（2026-04） |
+| OpenAI | 対応予定なし |
+| Spotify Podcasts | Coming Soon |
+
+設定画面に全ソースが表示され、未対応のものは「Coming Soon」として表示される。
 
 ### sync-gateway について
 
@@ -148,6 +169,10 @@ docker compose up -d --build
 | `LINE_CHANNEL_SECRET` | - | LINE Messaging API チャネルシークレット |
 | `LINE_BOT_BASIC_ID` | - | LINE 公式アカウントのベーシック ID（`@xxx`） |
 | `PERSONAL_LINE_URL` | - | CRITICAL 通知時に表示する個人 LINE URL |
+| `NEXTDNS_API_KEY` | - | NextDNS API キー |
+| `NEXTDNS_PROFILE_ID` | - | NextDNS プロファイル ID |
+| `STASH_API_URL` | - | Stash GraphQL API URL（デフォルト: `http://172.17.0.1:9999`） |
+| `STASH_API_KEY` | - | Stash API キー（JWT） |
 | `NOTIFICATION_ENABLED` | - | 通知機能の有効化（`true` / `false`） |
 
 ## デプロイ
