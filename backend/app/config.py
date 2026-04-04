@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     nextdns_api_key: str = ""
     nextdns_profile_id: str = ""
 
+    # Stash (local media manager)
+    stash_api_url: str = "http://localhost:9999"
+    stash_api_key: str = ""
+
     # Notification - LINE Messaging API
     line_channel_access_token: str = ""
     line_channel_secret: str = ""

@@ -35,6 +35,9 @@ services:
       # NextDNS
       - NEXTDNS_API_KEY=${NEXTDNS_API_KEY:-}
       - NEXTDNS_PROFILE_ID=${NEXTDNS_PROFILE_ID:-}
+      # Stash
+      - STASH_API_URL=${STASH_API_URL:-http://172.17.0.1:9999}
+      - STASH_API_KEY=${STASH_API_KEY:-}
       # Notification
       - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN:-}
       - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET:-}

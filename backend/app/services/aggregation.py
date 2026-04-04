@@ -39,7 +39,7 @@ FRIENDLY_MESSAGES = {
 }
 
 # Map category values to ChartDataPoint fields
-ACTIVITY_CATEGORIES = ["music", "exercise", "commute", "reading", "movie", "sns", "coding", "calendar", "live", "shopping"]
+ACTIVITY_CATEGORIES = ["music", "exercise", "commute", "reading", "movie", "sns", "coding", "calendar", "live", "shopping", "vitality"]
 STATE_CATEGORIES = ["sleep", "readiness", "stress", "weight"]
 
 # Category display labels
@@ -54,6 +54,7 @@ CATEGORY_LABELS = {
     "calendar": "予定",
     "live": "ライブ",
     "shopping": "買い物",
+    "vitality": "活力",
     "fitness": "フィットネス",
 }
 
@@ -69,6 +70,7 @@ CATEGORY_COLORS = {
     "calendar": "#FFB86C",
     "live": "#FF79C6",
     "shopping": "#8BE9FD",
+    "vitality": "#50FA7B",
     "fitness": "#50FA7B",
 }
 
