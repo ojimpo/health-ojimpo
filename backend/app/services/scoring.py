@@ -235,7 +235,7 @@ async def calculate_scores(for_date: date | None = None) -> dict:
     async with get_db_context() as db:
         # Get all active baseline sources
         baseline_rows = await db.execute_fetchall(
-            "SELECT id FROM source_settings WHERE status = 'active' AND classification IN ('baseline', 'both')"
+            "SELECT id FROM source_settings WHERE status = 'active' AND classification IN ('baseline', 'both', 'health_only')"
         )
         # Get all active activity sources
         activity_rows = await db.execute_fetchall(

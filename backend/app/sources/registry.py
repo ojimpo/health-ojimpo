@@ -23,6 +23,7 @@ def register_adapters():
     from .nextdns_sns import NextDNSSNSAdapter
     from .nextdns_vitality import NextDNSVitalityAdapter
     from .stash_vitality import StashVitalityAdapter
+    from .nextdns_outing import NextDNSOutingAdapter
 
     adapters = [
         LastfmAdapter(),
@@ -43,6 +44,7 @@ def register_adapters():
         NextDNSSNSAdapter(),
         NextDNSVitalityAdapter(),
         StashVitalityAdapter(),
+        NextDNSOutingAdapter(),
     ]
     for adapter in adapters:
         SOURCE_ADAPTERS[adapter.source_id] = adapter

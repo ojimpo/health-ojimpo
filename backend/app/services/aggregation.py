@@ -40,7 +40,7 @@ FRIENDLY_MESSAGES = {
 
 # Map category values to ChartDataPoint fields
 ACTIVITY_CATEGORIES = ["music", "exercise", "reading", "movie", "sns", "coding", "calendar", "live", "shopping", "vitality"]
-STATE_CATEGORIES = ["sleep", "readiness", "stress", "weight"]
+STATE_CATEGORIES = ["sleep", "readiness", "stress", "weight", "outing"]
 
 # Category display labels
 CATEGORY_LABELS = {
@@ -105,7 +105,7 @@ async def _get_category_classifications() -> tuple[set[str], set[str]]:
     activity_cats: set[str] = set()
     for cat, classification, display_type in rows:
         mapped = _map_category(cat)
-        if classification in ("baseline", "both"):
+        if classification in ("baseline", "both", "health_only"):
             baseline_cats.add(mapped)
         if display_type == "activity":
             activity_cats.add(mapped)
@@ -377,6 +377,7 @@ def _make_chart_point(
         readiness=round(cat_data["readiness"], 1) if "readiness" in cat_data else None,
         stress=round(cat_data["stress"], 1) if "stress" in cat_data else None,
         weight=round(cat_data["weight"], 1) if "weight" in cat_data else None,
+        outing=round(cat_data["outing"], 1) if "outing" in cat_data else None,
         health_status=health_status,
         cultural_status=cultural_status,
         health_score=health_score,

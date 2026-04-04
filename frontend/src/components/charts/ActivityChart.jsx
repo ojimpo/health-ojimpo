@@ -51,10 +51,11 @@ function ChartTooltip({ active, payload, label, mode }) {
       {mode === 'CONDITION' && stateCategories.map((c, i) => {
         const v = point?.[c.key]
         if (v == null) return null
+        const unit = c.key === 'outing' ? '%' : ''
         return (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 24, fontSize: 12, color: c.color, padding: '2px 0' }}>
             <span style={{ opacity: 0.8 }}>{c.label}</span>
-            <span style={{ fontWeight: 600 }}>{v}</span>
+            <span style={{ fontWeight: 600 }}>{v}{unit}</span>
           </div>
         )
       })}
