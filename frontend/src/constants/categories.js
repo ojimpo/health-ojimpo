@@ -9,6 +9,7 @@ export const activityCategories = [
   { key: 'live', label: 'ライブ', color: '#FF79C6' },
   { key: 'shopping', label: '買い物', color: '#8BE9FD' },
   { key: 'vitality', label: '活力', color: '#50FA7B' },
+  { key: 'outing_activity', label: '外出', color: '#FFB86C' },
 ]
 
 export const stateCategories = [
