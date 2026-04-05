@@ -175,7 +175,7 @@ class GoogleCalendarAdapter(SourceAdapter):
                 activities.append({
                     "time": time_str,
                     "icon": self._icon,
-                    "text": row[1] or self.display_name,
+                    "text": row[1] if include_detail else self.display_name,
                     "detail": None,
                     "color": self._color,
                     "sort_date": row[0],

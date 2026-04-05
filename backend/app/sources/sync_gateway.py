@@ -163,7 +163,7 @@ class SyncGatewayAdapter(SourceAdapter):
             activities.append({
                 "time": time_str,
                 "icon": self._icon,
-                "text": title or self._activity_text,
+                "text": title if include_detail else self._activity_text,
                 "detail": detail,
                 "color": self._color,
                 "sort_date": event_date[:10],
