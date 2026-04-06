@@ -90,7 +90,7 @@ class KashidashiCDAdapter(SourceAdapter):
                     "icon": "💿",
                     "text": f"CD{count}枚を貸出",
                     "detail": None,
-                    "color": "#00BFFF",
+                    "color": "#FF79C6",
                     "sort_date": row[0],
                 })
 

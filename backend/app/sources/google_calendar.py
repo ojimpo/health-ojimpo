@@ -17,14 +17,14 @@ SOURCE_CONFIG = {
         "display_name": "プライベート予定",
         "category": "calendar",
         "icon": "🏖️",
-        "color": "#FFB86C",
+        "color": "#FF3366",
         "calendar_id": settings.gcal_private_calendar_id,
     },
     "gcal_live": {
         "display_name": "ライブ",
         "category": "live",
         "icon": "🎵",
-        "color": "#FF79C6",
+        "color": "#7C3AED",
         "calendar_id": settings.gcal_live_calendar_id,
     },
 }

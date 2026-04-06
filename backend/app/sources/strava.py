@@ -162,7 +162,7 @@ class StravaAdapter(SourceAdapter):
                     "icon": "🚴",
                     "text": f"運動 {km:.1f}km{elev_str}",
                     "detail": f"{dur}" if include_detail else None,
-                    "color": "#FF3366",
+                    "color": "#FC4C02",
                     "sort_date": row[0],
                 })
 
@@ -216,7 +216,7 @@ class StravaCommuteAdapter(SourceAdapter):
                     "icon": "🚲",
                     "text": f"通勤 {row[1]:.1f}km ({dur})",
                     "detail": f"{int(row[3])}回" if include_detail else None,
-                    "color": "#FF79C6",
+                    "color": "#FC4C02",
                     "sort_date": row[0],
                 })
 

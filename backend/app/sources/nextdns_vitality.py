@@ -167,7 +167,7 @@ class NextDNSVitalityAdapter(SourceAdapter):
                     "icon": "💚",
                     "text": f"Vitality {int(row[1])}",
                     "detail": None,  # Never expose domain details
-                    "color": "#50FA7B",
+                    "color": "#D4A574",
                     "sort_date": row[0],
                 })
 

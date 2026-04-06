@@ -188,7 +188,7 @@ class NextDNSOutingAdapter(SourceAdapter):
                     "icon": "🚶",
                     "text": f"外出 {pct}%",
                     "detail": f"cellular: {cellular}/{total}" if include_detail else None,
-                    "color": "#FFB86C",
+                    "color": "#66BB6A",
                     "sort_date": row[0],
                 })
 
