@@ -37,6 +37,7 @@ async def init_db():
     os.makedirs(os.path.dirname(_db_path), exist_ok=True)
     migrations_dir = Path(__file__).parent / "migrations"
     async with get_db_context() as db:
+        await db.execute("PRAGMA foreign_keys=OFF")
         for sql_file in sorted(migrations_dir.glob("*.sql")):
             sql = sql_file.read_text()
             try:
@@ -48,3 +49,4 @@ async def init_db():
                 else:
                     raise
         await db.commit()
+        await db.execute("PRAGMA foreign_keys=ON")
