@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     strava_client_secret: str = ""
     google_client_id: str = ""
     google_client_secret: str = ""
+    spotify_client_id: str = ""
+    spotify_client_secret: str = ""
 
     # Google Calendar IDs (personal calendars)
     gcal_private_calendar_id: str = ""

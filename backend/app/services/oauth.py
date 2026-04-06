@@ -45,6 +45,10 @@ async def _refresh_token(source_id: str, refresh_token: str) -> str | None:
         token_url = "https://oauth2.googleapis.com/token"
         client_id = settings.google_client_id
         client_secret = settings.google_client_secret
+    elif source_id == "spotify_podcast":
+        token_url = "https://accounts.spotify.com/api/token"
+        client_id = settings.spotify_client_id
+        client_secret = settings.spotify_client_secret
     else:
         return None
 

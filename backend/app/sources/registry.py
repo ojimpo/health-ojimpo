@@ -24,6 +24,7 @@ def register_adapters():
     from .nextdns_vitality import NextDNSVitalityAdapter
     from .stash_vitality import StashVitalityAdapter
     from .nextdns_outing import NextDNSOutingAdapter
+    from .spotify_podcast import SpotifyPodcastAdapter
 
     adapters = [
         LastfmAdapter(),
@@ -45,6 +46,7 @@ def register_adapters():
         NextDNSVitalityAdapter(),
         StashVitalityAdapter(),
         NextDNSOutingAdapter(),
+        SpotifyPodcastAdapter(),
     ]
     for adapter in adapters:
         SOURCE_ADAPTERS[adapter.source_id] = adapter

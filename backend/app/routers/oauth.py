@@ -24,6 +24,11 @@ OAUTH_CONFIGS = {
         "token_url": "https://oauth2.googleapis.com/token",
         "scope": "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send",
     },
+    "spotify": {
+        "authorize_url": "https://accounts.spotify.com/authorize",
+        "token_url": "https://accounts.spotify.com/api/token",
+        "scope": "user-read-recently-played",
+    },
 }
 
 
@@ -42,6 +47,21 @@ async def oauth_authorize(source_id: str, request: Request):
             "response_type": "code",
             "scope": config["scope"],
             "state": "strava",
+        }
+        return RedirectResponse(f"{config['authorize_url']}?{urlencode(params)}")
+
+    elif source_id == "spotify_podcast":
+        config = OAUTH_CONFIGS["spotify"]
+        client_id = settings.spotify_client_id
+        if not client_id:
+            raise HTTPException(400, "SPOTIFY_CLIENT_ID not configured")
+        redirect_uri = "https://health.ojimpo.com/api/oauth/spotify/callback"
+        params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": config["scope"],
+            "state": "spotify_podcast",
         }
         return RedirectResponse(f"{config['authorize_url']}?{urlencode(params)}")
 
@@ -87,6 +107,37 @@ async def strava_callback(code: str, request: Request):
         "refresh_token": data.get("refresh_token"),
         "expires_in": data.get("expires_in", 21600),
         "token_type": data.get("token_type", "Bearer"),
+    })
+
+    return RedirectResponse("/settings")
+
+
+@router.get("/spotify/callback")
+async def spotify_callback(code: str, state: str, request: Request):
+    """Handle Spotify OAuth2 callback."""
+    redirect_uri = "https://health.ojimpo.com/api/oauth/spotify/callback"
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(OAUTH_CONFIGS["spotify"]["token_url"], data={
+                "client_id": settings.spotify_client_id,
+                "client_secret": settings.spotify_client_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri,
+            })
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception:
+        logger.exception("Spotify OAuth callback failed")
+        raise HTTPException(500, "Failed to exchange authorization code")
+
+    await store_tokens("spotify_podcast", {
+        "access_token": data["access_token"],
+        "refresh_token": data.get("refresh_token"),
+        "expires_in": data.get("expires_in", 3600),
+        "token_type": data.get("token_type", "Bearer"),
+        "scope": data.get("scope"),
     })
 
     return RedirectResponse("/settings")
