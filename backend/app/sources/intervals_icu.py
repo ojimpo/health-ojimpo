@@ -50,9 +50,9 @@ class IntervalsAdapter(SourceAdapter):
                     continue
                 await db.execute(
                     """INSERT OR REPLACE INTO intervals_daily
-                    (date, ctl, atl, tsb, ftp)
-                    VALUES (?, ?, ?, ?, ?)""",
-                    (d, item.get("ctl"), item.get("atl"), item.get("rampRate"), item.get("ftp")),
+                    (date, ctl, atl, tsb, ftp, weight)
+                    VALUES (?, ?, ?, ?, ?, ?)""",
+                    (d, item.get("ctl"), item.get("atl"), item.get("rampRate"), item.get("ftp"), item.get("weight")),
                 )
                 stored += 1
             await db.commit()
@@ -67,6 +67,12 @@ class IntervalsAdapter(SourceAdapter):
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
                 SELECT date, 'intervals', 'ctl', 0, COALESCE(ctl, 0), 'CTL', NULL
                 FROM intervals_daily WHERE ctl IS NOT NULL"""
+            )
+            await db.execute(
+                """INSERT OR REPLACE INTO activity_records
+                (date, source, category, minutes, raw_value, raw_unit, metadata)
+                SELECT date, 'intervals', 'weight', 0, weight, 'kg', NULL
+                FROM intervals_daily WHERE weight IS NOT NULL"""
             )
             await db.commit()
         logger.info("intervals.icu aggregation completed")
