@@ -120,7 +120,7 @@ export default function SourceCard({ source, onUpdate, delay = 0 }) {
               <div>
                 <div className={styles.inputLabel} style={{ marginBottom: 6 }}>表示タイプ</div>
                 <div className={styles.classButtons}>
-                  {['activity', 'state'].map(t => (
+                  {['activity', 'card_only', 'state'].map(t => (
                     <button
                       key={t}
                       className={`${styles.classBtn} ${source.display_type === t ? styles.selected : ''}`}

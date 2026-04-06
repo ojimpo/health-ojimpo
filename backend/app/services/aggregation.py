@@ -171,7 +171,7 @@ async def _get_daily_baselines() -> tuple[dict[str, float], set[str]]:
     async with get_db_context() as db:
         rows = await db.execute_fetchall(
             """SELECT id, category, base_value, aggregation_period, spontaneity_coefficient, decay_half_life, score_method
-            FROM source_settings WHERE status = 'active'"""
+            FROM source_settings WHERE status = 'active' AND display_type != 'card_only'"""
         )
     baselines: dict[str, float] = {}
     decay_source_ids: set[str] = set()
@@ -248,9 +248,9 @@ async def _get_chart_data(
     thresholds = await get_thresholds()
     baseline_cats, activity_cats = await _get_category_classifications()
 
-    # SQL filter: exclude decay sources from bucket aggregation
+    # SQL filter: exclude decay sources and card_only sources from bucket aggregation
     non_decay_filter = """source IN (
-        SELECT id FROM source_settings WHERE status = 'active' AND (decay_half_life IS NULL OR score_method = 'daily_avg')
+        SELECT id FROM source_settings WHERE status = 'active' AND display_type != 'card_only' AND (decay_half_life IS NULL OR score_method = 'daily_avg')
     )"""
 
     async with get_db_context() as db:
@@ -396,7 +396,7 @@ async def _get_category_cards(for_date: date | None = None) -> list[CategoryCard
 
     async with get_db_context() as db:
         source_rows = await db.execute_fetchall(
-            "SELECT id, category, color FROM source_settings WHERE status = 'active' AND display_type = 'activity'"
+            "SELECT id, category, color FROM source_settings WHERE status = 'active' AND display_type IN ('activity', 'card_only')"
         )
 
     # Group sources by category

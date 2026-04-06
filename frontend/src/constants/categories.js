@@ -4,7 +4,6 @@ export const activityCategories = [
   { key: 'reading', label: '読書', color: '#ADFF2F' },
   { key: 'movie', label: '映画', color: '#FF9500' },
   { key: 'sns', label: 'SNS', color: '#BD93F9' },
-  { key: 'coding', label: 'コード', color: '#50FA7B' },
   { key: 'calendar', label: '予定', color: '#FFB86C' },
   { key: 'live', label: 'ライブ', color: '#FF79C6' },
   { key: 'shopping', label: '買い物', color: '#8BE9FD' },

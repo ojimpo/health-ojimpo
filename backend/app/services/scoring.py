@@ -239,7 +239,7 @@ async def calculate_scores(for_date: date | None = None) -> dict:
         )
         # Get all active activity sources
         activity_rows = await db.execute_fetchall(
-            "SELECT id FROM source_settings WHERE status = 'active' AND display_type = 'activity'"
+            "SELECT id FROM source_settings WHERE status = 'active' AND display_type IN ('activity', 'card_only')"
         )
 
     # Calculate baseline score (health indicator)
