@@ -204,7 +204,8 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
           />
           <YAxis
             yAxisId="left"
-            domain={[0, yMax || 'auto']}
+            domain={[0, 'dataMax']}
+            ticks={yMax ? [0, Math.round(yMax / 2), yMax] : undefined}
             tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.2)', fontFamily: "'JetBrains Mono'" }}
             axisLine={false}
             tickLine={false}

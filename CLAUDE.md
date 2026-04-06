@@ -6,67 +6,62 @@
 
 ## 重要ドキュメント
 
-- `docs/design.md` — **設計ドキュメント v0.5（必読）**。スコアリングモデル、データソース一覧、表示仕様、管理画面仕様、フェーズ戦略など全仕様が記載されている
-- `docs/kashidashi-plan.md` — 図書館貸出管理アプリ（kashidashi）の設計。Phase 2でAPI連携するため参考として配置
-- `docs/mockups/` — React (JSX) で書かれたUIモックアップ。**デザインの方向性・色・レイアウト・コンポーネント構成はこれに従うこと**
+- `docs/design.md` — **設計ドキュメント v0.5**。スコアリングモデル、データソース一覧、表示仕様などの全体設計
+- `docs/notes/score-calculation-discussion.md` — スコアリング議論（トークン爆発問題、指数減衰採用経緯、Curiosity軸構想）
+- `docs/mockups/` — React (JSX) で書かれたUIモックアップ。デザインの方向性の参考
   - `dashboard.jsx` — 本人用ダッシュボード
-  - `shared-view.jsx` — 友人用共有ビュー（3段階デモ切り替え付き）
+  - `shared-view.jsx` — 友人用共有ビュー
   - `settings.jsx` — 設定画面
 
-## 技術スタックの方針
+## 技術スタック
 
-- 技術スタックの選定はあなたに委ねる。ただし以下の制約がある
-- **Docker Compose** で構築し、自宅サーバー（arigato-nas、Ubuntu/Debian、N150、16GB RAM）にデプロイする
+- **Frontend**: React (Vite) → nginx → port 8401
+- **Backend**: FastAPI → port 8400
+- **DB**: SQLite (`data/health.db`)
+- **Docker Compose** で構築、自宅サーバー（arigato-nas）にデプロイ
 - **Cloudflare Tunnel** 経由で `health.ojimpo.com` として公開
-- フロントエンドのデザインは `docs/mockups/` のモックアップに忠実に再現すること
-  - ダークカラー基調、ネオンカラー、サイバーな雰囲気
+- フロントエンド: ダークカラー基調、ネオンカラー、サイバーな雰囲気
   - フォント: Orbitron（見出し）+ JetBrains Mono（データ）
-  - グラフ: 積み上げ面グラフ（角あり、ドット付き）+ 折れ線グラフ
-- DBはSQLiteを推奨（kashidashiと同様の構成）
+  - グラフ: 積み上げ面グラフ + 折れ線グラフ（Recharts）
+
+## カテゴリ設計方針
+
 - **カテゴリラベルは4文字以内**（カテゴリカードのレイアウトが崩れるため）
+- 1カテゴリに複数ソースを含むとスコアが膨らむ → 性質の異なるソースは別カテゴリに分ける
+  - 例: 音楽（Last.fm）とCD貸出（kashidashi）は別カテゴリ
+- **display_type** の3種:
+  - `activity` — 積み上げグラフに表示、文化スコアに参加
+  - `card_only` — グラフ非表示、カテゴリカードに表示、文化スコアに参加
+  - `state` — CONDITIONタブの折れ線に表示
+- カテゴリカラーは各サービスのブランドカラーに寄せる（Strava=オレンジ、Google Calendar=赤/紫等）
+  - 色定義: `frontend/src/constants/categories.js` + DB `source_settings.color`（カード用）
 
-## MVP スコープ
+## スコアリングモデル
 
-MVPでは以下のみを実装する。詳細は `docs/design.md` のフェーズ戦略を参照。
-
-### データソース
-- **Last.fm のみ**（公式API）
-- 過去数年分の再生履歴を一括取得し、直近の変動をグラフに表示する
-- **MVP検証目標**: 過去の活動低下期がグラフ上で「しぼむ」ことを確認する
-
-### 画面
-1. **本人用ダッシュボード** (`docs/mockups/dashboard.jsx` 参照)
-   - 2軸ステータス表示（健康指標: NORMAL/CAUTION/CRITICAL、文化的指標: RICH/MODERATE/LOW）
-   - 上段: 積み上げ面グラフ（活動量）+ 100点基準ライン
-   - 下段: 折れ線グラフ（状態系）— MVPではデータなしで構造だけ用意
-   - カテゴリカード、傾向コメント、最近の活動フィード
-2. **友人用共有ビュー** (`docs/mockups/shared-view.jsx` 参照)
-   - 健康状態に応じた演出（CRITICAL時はエヴァ暴走モード風の警告演出）
-   - 演出マトリクス（健康指標 × 文化的指標の組み合わせで演出が変わる）
-   - 活動フィードは詳細なし（抽象化表示）
-3. **設定画面** (`docs/mockups/settings.jsx` 参照)
-   - 全17データソースの一覧表示（Last.fm以外は「Coming Soon」でグレーアウト）
-   - 各ソースのトグル（本人ビュー/共有ビュー）
-   - 集計期間・基準値の設定
-   - 基準値の履歴管理（適用期間 + メモ）
-   - 閾値設定（健康指標・文化的指標）
-
-### API
-- Last.fm APIからの再生履歴取得（バッチ処理）
-- 内部API（フロントエンドが叩く）
-- FastAPIの自動生成ドキュメント（`/docs`）を活用すること
-
-## スコアリングモデル概要
-
-詳細は `docs/design.md` セクション2を参照。要点のみ:
+詳細は `docs/design.md` セクション2を参照。要点:
 
 - 各指標に「基準値」を設定し、基準値に対するパーセンテージでスコア化（100点 = 基準、上限なし）
-- 基準値には適用期間とメモを持たせる（intervals.icuのFTP管理と同様）
-- 集計期間（移動平均の窓）= 基準値の期間
-- 指標は「ベースライン」（ゼロが異常）と「イベント」（ゼロでも正常）の2分類
-- 健康指標はベースライン指標の平均から判定
-- 文化的指標は活動量の合計から判定
+- **指数減衰（decay_half_life）**: イベント型ソースのスパイクを平滑化（窓切断方式の代替）
+- 指標分類: `baseline`（ゼロが異常）、`event`（ゼロでも正常）、`health_only`（健康スコアのみ参加）
+- **健康指標**: baseline分類ソースの平均 → NORMAL/CAUTION/CRITICAL
+- **文化的指標**: display_type=activity/card_only ソースの合計 → RICH/MODERATE/LOW
 - 総合スコアを1つにまとめない。2軸で独立して表示
+
+## グラフ表示
+
+- 3モードタブ: ACTIVITY / SCORE / CONDITION
+- ACTIVITY: カラフル積み上げ面グラフ（デフォルト）
+- SCORE: モノクロ積み上げ + 健康/文化スコア折れ線
+- CONDITION: モノクロ積み上げ + sleep/readiness/stress/outing/CTL折れ線
+- 粒度: 1M=日次、3M=日次、1Y=週次
+- Y軸: tickを手動制御（中央値ベース）、dataMaxでスパイクも表示
+
+## マイグレーション
+
+- `backend/app/migrations/` に連番SQLファイル
+- init_db: duplicate column/already exists エラーを自動スキップ（冪等化）
+- 最新: 023
+- **コード変更はリビルドが必要**: `docker compose build backend && docker compose up -d backend`
 
 ## デプロイ
 

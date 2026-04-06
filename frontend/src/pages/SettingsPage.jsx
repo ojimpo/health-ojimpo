@@ -16,6 +16,7 @@ const CATEGORY_LABELS = {
   calendar: '予定',
   live: 'ライブ',
   shopping: '買い物',
+  cd: 'CD貸出',
   fitness: 'フィットネス',
   sleep: '睡眠',
   weight: '体重',

@@ -27,6 +27,7 @@ class ChartDataPoint(BaseModel):
     shopping: float = 0
     vitality: float = 0
     outing_activity: float = 0
+    cd: float = 0
     sleep: float | None = None
     readiness: float | None = None
     stress: float | None = None

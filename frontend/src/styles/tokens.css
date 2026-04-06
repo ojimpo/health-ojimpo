@@ -12,12 +12,17 @@
 
   /* Activity category colors */
   --color-music: #00F0FF;
-  --color-exercise: #FF3366;
+  --color-exercise: #FC4C02;
   --color-reading: #ADFF2F;
-  --color-movie: #FF9500;
+  --color-movie: #FFD700;
   --color-sns: #BD93F9;
   --color-coding: #50FA7B;
-  --color-calendar: #FFB86C;
+  --color-calendar: #FF3366;
+  --color-live: #7C3AED;
+  --color-shopping: #8BE9FD;
+  --color-vitality: #D4A574;
+  --color-outing-activity: #66BB6A;
+  --color-cd: #FF79C6;
 
   /* State category colors */
   --color-sleep: #BD93F9;

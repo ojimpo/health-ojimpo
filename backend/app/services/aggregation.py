@@ -39,7 +39,7 @@ FRIENDLY_MESSAGES = {
 }
 
 # Map category values to ChartDataPoint fields
-ACTIVITY_CATEGORIES = ["music", "exercise", "reading", "movie", "sns", "coding", "calendar", "live", "shopping", "vitality", "outing_activity"]
+ACTIVITY_CATEGORIES = ["music", "exercise", "reading", "movie", "sns", "coding", "calendar", "live", "shopping", "vitality", "outing_activity", "cd"]
 STATE_CATEGORIES = ["sleep", "readiness", "stress", "weight", "outing", "ctl"]
 
 # Category display labels
@@ -55,6 +55,7 @@ CATEGORY_LABELS = {
     "shopping": "買い物",
     "vitality": "活力",
     "outing_activity": "外出",
+    "cd": "CD貸出",
     "fitness": "フィットネス",
 }
 
@@ -376,6 +377,7 @@ def _make_chart_point(
         shopping=round(cat_data.get("shopping", 0), 1),
         vitality=round(cat_data.get("vitality", 0), 1),
         outing_activity=round(cat_data.get("outing_activity", 0), 1),
+        cd=round(cat_data.get("cd", 0), 1),
         sleep=round(cat_data["sleep"], 1) if "sleep" in cat_data else None,
         readiness=round(cat_data["readiness"], 1) if "readiness" in cat_data else None,
         stress=round(cat_data["stress"], 1) if "stress" in cat_data else None,
