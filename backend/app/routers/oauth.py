@@ -27,7 +27,7 @@ OAUTH_CONFIGS = {
     "spotify": {
         "authorize_url": "https://accounts.spotify.com/authorize",
         "token_url": "https://accounts.spotify.com/api/token",
-        "scope": "user-read-recently-played",
+        "scope": "user-read-recently-played user-read-playback-position user-library-read",
     },
 }
 

@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 import httpx
 
@@ -25,98 +25,97 @@ class SpotifyPodcastAdapter(SourceAdapter):
             logger.warning("Spotify: no valid token")
             return 0, 0
 
-        # Determine cursor: fetch plays after this timestamp
-        if from_date:
-            after_ms = int(
-                datetime.strptime(from_date, "%Y-%m-%d")
-                .replace(tzinfo=timezone.utc)
-                .timestamp()
-                * 1000
-            )
-        else:
-            last_ts = await self.get_last_timestamp()
-            if last_ts:
-                after_ms = last_ts * 1000
-            else:
-                # First fetch: go back 30 days
-                after_ms = int(
-                    (datetime.now(timezone.utc) - timedelta(days=30)).timestamp() * 1000
-                )
-
         headers = {"Authorization": f"Bearer {token}"}
-        all_items = []
+        cutoff = from_date or (date.today() - timedelta(days=90)).isoformat()
 
         async with httpx.AsyncClient(timeout=30) as client:
-            # Paginate using 'after' cursor (oldest first)
-            url = f"{SPOTIFY_API_BASE}/me/player/recently-played"
-            params = {"limit": 50, "after": after_ms}
-
+            # 1. Get all followed shows
+            shows = []
+            url = f"{SPOTIFY_API_BASE}/me/shows"
+            params = {"limit": 50}
             while url:
                 try:
                     resp = await client.get(url, headers=headers, params=params)
                     resp.raise_for_status()
                     data = resp.json()
                 except Exception:
-                    logger.exception("Failed to fetch Spotify recently-played")
+                    logger.exception("Failed to fetch Spotify shows")
                     break
+                shows.extend(data.get("items", []))
+                url = data.get("next")
+                params = None  # next URL includes params
 
-                items = data.get("items", [])
-                all_items.extend(items)
+            logger.info("Spotify Podcast: %d followed shows", len(shows))
 
-                # Follow 'next' cursor if available
-                next_url = data.get("next")
-                if next_url and len(items) == 50:
-                    url = next_url
-                    params = None  # next URL includes params
-                else:
-                    break
+            # 2. For each show, check recent episodes for fully_played
+            total_checked = 0
+            stored = 0
+            for show_item in shows:
+                show = show_item.get("show")
+                if not show:
+                    continue
+                show_id = show["id"]
+                show_name = show.get("name", "")
 
-        # Filter to podcast episodes only
-        episodes = []
-        for item in all_items:
-            track = item.get("track")
-            if not track:
-                continue
-            # Episodes have type "episode", tracks have type "track"
-            if track.get("type") != "episode":
-                continue
-            episodes.append({
-                "episode_id": track["id"],
-                "episode_name": track.get("name", ""),
-                "show_name": track.get("show", {}).get("name", "") if track.get("show") else "",
-                "duration_ms": track.get("duration_ms", 0),
-                "played_at": item["played_at"],
-            })
+                ep_url = f"{SPOTIFY_API_BASE}/shows/{show_id}/episodes"
+                ep_params = {"limit": 50}
 
-        stored = 0
-        async with get_db_context() as db:
-            for ep in episodes:
-                played_date = ep["played_at"][:10]  # "2026-04-06T12:00:00.000Z" → "2026-04-06"
-                try:
-                    await db.execute(
-                        """INSERT OR IGNORE INTO spotify_podcast_plays
-                        (episode_id, episode_name, show_name, duration_ms, played_at, played_date)
-                        VALUES (?, ?, ?, ?, ?, ?)""",
-                        (
-                            ep["episode_id"],
-                            ep["episode_name"],
-                            ep["show_name"],
-                            ep["duration_ms"],
-                            ep["played_at"],
-                            played_date,
-                        ),
-                    )
-                    stored += 1
-                except Exception:
-                    logger.exception("Error storing podcast play: %s", ep["episode_name"])
-            await db.commit()
+                while ep_url:
+                    try:
+                        resp = await client.get(ep_url, headers=headers, params=ep_params)
+                        resp.raise_for_status()
+                        ep_data = resp.json()
+                    except Exception:
+                        logger.exception("Failed to fetch episodes for %s", show_name)
+                        break
 
-        logger.info("Spotify Podcast: fetched %d items, %d episodes stored", len(all_items), stored)
-        return len(all_items), stored
+                    episodes = [e for e in ep_data.get("items", []) if e is not None]
+                    if not episodes:
+                        break
+
+                    past_cutoff = False
+                    for ep in episodes:
+                        release_date = ep.get("release_date", "")
+                        if release_date < cutoff:
+                            past_cutoff = True
+                            break
+
+                        total_checked += 1
+                        rp = ep.get("resume_point", {})
+                        if not rp.get("fully_played"):
+                            continue
+
+                        # Store fully_played episode with release_date as played_date
+                        async with get_db_context() as db:
+                            try:
+                                await db.execute(
+                                    """INSERT OR IGNORE INTO spotify_podcast_plays
+                                    (episode_id, episode_name, show_name, duration_ms, played_at, played_date)
+                                    VALUES (?, ?, ?, ?, ?, ?)""",
+                                    (
+                                        ep["id"],
+                                        ep.get("name", ""),
+                                        show_name,
+                                        ep.get("duration_ms", 0),
+                                        release_date,
+                                        release_date,
+                                    ),
+                                )
+                                await db.commit()
+                                stored += 1
+                            except Exception:
+                                logger.exception("Error storing podcast: %s", ep.get("name"))
+
+                    if past_cutoff:
+                        break
+                    ep_url = ep_data.get("next")
+                    ep_params = None
+
+        logger.info("Spotify Podcast: checked %d episodes, stored %d new", total_checked, stored)
+        return total_checked, stored
 
     async def aggregate(self) -> None:
         async with get_db_context() as db:
-            # Delete all and re-insert (幽霊データ対策)
             await db.execute(
                 "DELETE FROM activity_records WHERE source = 'spotify_podcast'"
             )
