@@ -110,7 +110,7 @@ export default function SharedViewPage() {
         </div>
 
         {/* Category cards (smaller) */}
-        <CategoryCards cards={data.category_cards} small />
+        <CategoryCards cards={data.category_cards} small chartData={data.activity_chart} />
 
         {/* Recent activity (dimmed for CRITICAL) */}
         <RecentActivity activities={data.recent_activities} dimmed={isCritical} />

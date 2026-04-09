@@ -1,11 +1,23 @@
+import { useMemo } from 'react'
+import { motion } from 'framer-motion'
+import { useSortedCategories } from '../../hooks/useSortedCategories'
 import styles from './CategoryCards.module.css'
 
-export default function CategoryCards({ cards, onHover, small = false }) {
+export default function CategoryCards({ cards, onHover, small = false, chartData }) {
+  const sortedCategories = useSortedCategories(chartData)
+
+  const sortedCards = useMemo(() => {
+    const orderMap = new Map(sortedCategories.map((c, i) => [c.key, i]))
+    return [...cards].sort((a, b) => (orderMap.get(a.key) ?? 999) - (orderMap.get(b.key) ?? 999))
+  }, [cards, sortedCategories])
+
   return (
     <div className={styles.grid} style={small ? { gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' } : undefined}>
-      {cards.map((card, i) => (
-        <div
+      {sortedCards.map((card, i) => (
+        <motion.div
           key={card.key}
+          layout
+          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           className={styles.card}
           onMouseEnter={() => onHover?.(card.key)}
           onMouseLeave={() => onHover?.(null)}
@@ -40,7 +52,7 @@ export default function CategoryCards({ cards, onHover, small = false }) {
               {card.change >= 0 ? '+' : ''}{Math.round(card.change)}
             </span>
           </div>
-        </div>
+        </motion.div>
       ))}
     </div>
   )

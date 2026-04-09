@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { activityCategories, stateCategories } from '../../constants/categories'
 import { healthStatusConfig, culturalStatusConfig } from '../../constants/statusConfig'
+import { useSortedCategories } from '../../hooks/useSortedCategories'
 import styles from './ActivityChart.module.css'
 
 const MODES = ['ACTIVITY', 'SCORE', 'CONDITION']
@@ -12,18 +13,6 @@ const OVERLAY_KEYS = new Set([
   'cultural_rich', 'cultural_moderate', 'cultural_low',
   ...stateCategories.map(c => c.key),
 ])
-
-function cv(values) {
-  const mean = values.reduce((s, v) => s + v, 0) / values.length
-  if (mean === 0) return 0
-  const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length
-  return Math.sqrt(variance) / mean
-}
-
-function sortCategoriesByStability(data, categories) {
-  if (!data?.length) return categories
-  return [...categories].sort((a, b) => cv(data.map(d => d[a.key] || 0)) - cv(data.map(d => d[b.key] || 0)))
-}
 
 function ChartTooltip({ active, payload, label, mode }) {
   if (!active || !payload || !payload.length) return null
@@ -158,7 +147,7 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
   const [mode, setMode] = useState('ACTIVITY')
   const isMobile = useIsMobile()
   const isOverlay = mode !== 'ACTIVITY'
-  const sortedCategories = useMemo(() => sortCategoriesByStability(data, activityCategories), [data])
+  const sortedCategories = useSortedCategories(data)
   const chartData = mode === 'SCORE' ? prepareScoreData(data) : data
   const chartHeight = isMobile ? 300 : 450
   const yMax = getYMax(data)

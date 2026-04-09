@@ -92,7 +92,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Category cards */}
-      <CategoryCards cards={data.category_cards} onHover={setHoveredCategory} />
+      <CategoryCards cards={data.category_cards} onHover={setHoveredCategory} chartData={data.activity_chart} />
 
       {/* State cards */}
       <StateCards cards={data.state_cards} />
