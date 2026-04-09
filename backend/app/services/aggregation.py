@@ -486,16 +486,19 @@ async def _get_recent_activities(
     limit: int = 8, include_detail: bool = True
 ) -> list[RecentActivity]:
     """Get merged recent activity feed from all active sources."""
-    # Load colors from DB so adapters don't need to hardcode them
+    # Load active sources and their colors from DB
     async with get_db_context() as db:
         color_rows = await db.execute_fetchall(
             "SELECT id, color FROM source_settings WHERE status = 'active'"
         )
     source_colors = {row[0]: row[1] for row in color_rows}
+    active_sources = set(source_colors.keys())
 
     all_activities = []
 
     for adapter in SOURCE_ADAPTERS.values():
+        if adapter.source_id not in active_sources:
+            continue
         if await adapter.is_configured():
             try:
                 activities = await adapter.get_recent_activities(

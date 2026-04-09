@@ -13,7 +13,7 @@ def register_adapters():
     from .kashidashi import KashidashiCDAdapter
     from .oura import OuraAdapter
     from .intervals_icu import IntervalsAdapter
-    from .strava import StravaAdapter, StravaCommuteAdapter, StravaVoluntaryAdapter
+    from .strava import StravaAdapter
     from .google_calendar import GoogleCalendarAdapter
     from .claude_local import ClaudeLocalAdapter
     from .github import GitHubAdapter
@@ -32,8 +32,6 @@ def register_adapters():
         OuraAdapter(),
         IntervalsAdapter(),
         StravaAdapter(),
-        StravaCommuteAdapter(),  # kept for backward compat, disabled in DB
-        StravaVoluntaryAdapter(),
         GoogleCalendarAdapter("gcal_private"),
         GoogleCalendarAdapter("gcal_live"),
         SyncGatewayAdapter("filmarks", "filmarks", "映画 (Filmarks)", "movie", "🎬", "#FF9500", "本", "映画を視聴 "),
