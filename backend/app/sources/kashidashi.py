@@ -49,7 +49,7 @@ class KashidashiCDAdapter(SourceAdapter):
                 await db.execute(
                     """INSERT OR REPLACE INTO activity_records
                     (date, source, category, minutes, raw_value, raw_unit, metadata)
-                    VALUES (?, 'kashidashi_cd', 'music', ?, ?, '枚', NULL)""",
+                    VALUES (?, 'kashidashi_cd', 'cd', ?, ?, '枚', NULL)""",
                     (d, count, count),
                 )
                 stored += 1
