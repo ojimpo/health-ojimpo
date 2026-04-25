@@ -242,7 +242,7 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
               strokeWidth={hoveredCategory == null || hoveredCategory === c.key ? 1.5 : 0.5}
               fill={`url(#grad-${c.key})`}
               strokeOpacity={isOverlay ? 0.3 : (hoveredCategory == null || hoveredCategory === c.key ? 0.8 : 0.15)}
-              dot={isMobile ? false : { r: 2, fill: isOverlay ? '#555' : c.color, strokeWidth: 0, opacity: isOverlay ? 0.2 : (hoveredCategory == null || hoveredCategory === c.key ? 0.8 : 0.15) }}
+              dot={false}
               activeDot={isMobile ? false : { r: 4, fill: isOverlay ? '#555' : c.color, stroke: '#07080F', strokeWidth: 2 }}
             />
           ))}
@@ -260,7 +260,7 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
               stroke={s.color}
               strokeWidth={2}
               hide={mode !== 'SCORE'}
-              dot={mode === 'SCORE' ? { r: 2, fill: s.color, strokeWidth: 0 } : false}
+              dot={false}
               activeDot={mode === 'SCORE' ? { r: 4, fill: s.color, stroke: '#07080F', strokeWidth: 2 } : false}
               connectNulls={false}
             />
@@ -280,7 +280,7 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
               strokeWidth={2}
               strokeDasharray="6 3"
               hide={mode !== 'SCORE'}
-              dot={mode === 'SCORE' ? { r: 2, fill: s.color, strokeWidth: 0 } : false}
+              dot={false}
               activeDot={mode === 'SCORE' ? { r: 4, fill: s.color, stroke: '#07080F', strokeWidth: 2 } : false}
               connectNulls={false}
             />
@@ -295,7 +295,7 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
               stroke={c.color}
               strokeWidth={2}
               hide={mode !== 'CONDITION'}
-              dot={mode === 'CONDITION' ? { r: 2, fill: c.color, strokeWidth: 0 } : false}
+              dot={false}
               activeDot={mode === 'CONDITION' ? { r: 4, fill: c.color, stroke: '#07080F', strokeWidth: 2 } : false}
               connectNulls={false}
             />
