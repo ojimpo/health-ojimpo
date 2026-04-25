@@ -21,6 +21,8 @@ const SCORE_ZONES = [
   { y1: 70, y2: 140, fill: '#50FA7B', label: 'NORMAL / RICH' },
 ]
 
+const AXIS_TICK = { fontSize: 10, fill: 'rgba(255,255,255,0.4)', fontFamily: "'JetBrains Mono'" }
+
 function ChartTooltip({ active, payload, label, mode }) {
   if (!active || !payload || !payload.length) return null
   const areaPayload = payload.filter(p => !OVERLAY_KEYS.has(p.dataKey))
@@ -175,7 +177,7 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
           <XAxis
             dataKey="date"
             interval={getTickInterval(data?.length || 0, isMobile)}
-            tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.25)', fontFamily: "'JetBrains Mono'" }}
+            tick={AXIS_TICK}
             axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
             tickLine={false}
           />
@@ -183,27 +185,30 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
             yAxisId="left"
             domain={[0, 'dataMax']}
             ticks={yMax ? [0, Math.round(yMax / 2), yMax] : undefined}
-            tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.2)', fontFamily: "'JetBrains Mono'" }}
+            tick={mode === 'SCORE' ? false : AXIS_TICK}
             axisLine={false}
             tickLine={false}
+            width={mode === 'SCORE' ? 0 : 40}
           />
           <YAxis
             yAxisId="right"
-            orientation="right"
+            orientation={mode === 'SCORE' ? 'left' : 'right'}
             domain={mode === 'CONDITION' ? [0, 100] : [0, 140]}
-            tick={isOverlay ? { fontSize: 10, fill: 'rgba(255,255,255,0.15)', fontFamily: "'JetBrains Mono'" } : false}
+            tick={isOverlay ? AXIS_TICK : false}
             axisLine={false}
             tickLine={false}
             ticks={mode === 'CONDITION' ? [20, 40, 60, 80] : [40, 70, 100]}
             width={isOverlay ? 30 : 0}
           />
-          <ReferenceLine
-            yAxisId="left"
-            y={100}
-            stroke="rgba(255,255,255,0.08)"
-            strokeDasharray="6 4"
-            label={{ value: 'BASE 100', position: 'insideTopLeft', fill: 'rgba(255,255,255,0.12)', fontSize: 9, fontFamily: "'JetBrains Mono'" }}
-          />
+          {mode !== 'SCORE' && (
+            <ReferenceLine
+              yAxisId="left"
+              y={100}
+              stroke="rgba(255,255,255,0.08)"
+              strokeDasharray="6 4"
+              label={{ value: 'BASE 100', position: 'insideTopLeft', fill: 'rgba(255,255,255,0.12)', fontSize: 9, fontFamily: "'JetBrains Mono'" }}
+            />
+          )}
           {/* SCORE mode: status zone bands on right axis */}
           {mode === 'SCORE' && SCORE_ZONES.map(z => (
             <ReferenceArea
