@@ -1,5 +1,5 @@
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import httpx
 
@@ -26,7 +26,11 @@ class SpotifyPodcastAdapter(SourceAdapter):
             return 0, 0
 
         headers = {"Authorization": f"Bearer {token}"}
-        cutoff = from_date or (date.today() - timedelta(days=90)).isoformat()
+        # Pagination stop only — we still process episodes older than this
+        # if user listens to them. 2 years captures backlog listening.
+        cutoff = from_date or (date.today() - timedelta(days=730)).isoformat()
+        today_iso = date.today().isoformat()
+        now_iso = datetime.now().isoformat()
 
         async with httpx.AsyncClient(timeout=30) as client:
             # 1. Get all followed shows
@@ -85,7 +89,9 @@ class SpotifyPodcastAdapter(SourceAdapter):
                         if not rp.get("fully_played"):
                             continue
 
-                        # Store fully_played episode with release_date as played_date
+                        # Spotify API doesn't expose play timestamps for podcasts.
+                        # Use scan time as best-effort "listened on" date.
+                        # INSERT OR IGNORE preserves the first-detection date across runs.
                         async with get_db_context() as db:
                             try:
                                 await db.execute(
@@ -97,8 +103,8 @@ class SpotifyPodcastAdapter(SourceAdapter):
                                         ep.get("name", ""),
                                         show_name,
                                         ep.get("duration_ms", 0),
-                                        release_date,
-                                        release_date,
+                                        now_iso,
+                                        today_iso,
                                     ),
                                 )
                                 await db.commit()
