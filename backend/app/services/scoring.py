@@ -282,22 +282,20 @@ async def calculate_scores(for_date: date | None = None) -> dict:
     expected_total = len(activity_scores) * 100 if activity_scores else 1
     cultural_pct = (activity_total / expected_total) * 100
 
-    # Determine statuses
-    health_normal = thresholds.get("health_normal_threshold", 70)
-    health_caution = thresholds.get("health_caution_threshold", 40)
-    cultural_rich = thresholds.get("cultural_rich_threshold", 70)
-    cultural_moderate = thresholds.get("cultural_moderate_threshold", 40)
+    # Determine statuses (unified threshold for both health and cultural)
+    score_normal = thresholds.get("score_normal_threshold", 70)
+    score_caution = thresholds.get("score_caution_threshold", 40)
 
-    if baseline_avg >= health_normal:
+    if baseline_avg >= score_normal:
         health_status = HealthStatus.NORMAL
-    elif baseline_avg >= health_caution:
+    elif baseline_avg >= score_caution:
         health_status = HealthStatus.CAUTION
     else:
         health_status = HealthStatus.CRITICAL
 
-    if cultural_pct >= cultural_rich:
+    if cultural_pct >= score_normal:
         cultural_status = CulturalStatus.RICH
-    elif cultural_pct >= cultural_moderate:
+    elif cultural_pct >= score_caution:
         cultural_status = CulturalStatus.MODERATE
     else:
         cultural_status = CulturalStatus.LOW

@@ -12,7 +12,14 @@
   font-weight: 600;
   letter-spacing: 3px;
   color: var(--text-subtle);
-  margin-bottom: 20px;
+  margin-bottom: 8px;
+}
+
+.note {
+  font-size: 11px;
+  color: var(--text-subtle);
+  opacity: 0.6;
+  margin-bottom: 16px;
 }
 
 .grid {

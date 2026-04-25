@@ -155,17 +155,13 @@ class BaselineCreate(BaseModel):
 
 
 class ThresholdsResponse(BaseModel):
-    health_normal_threshold: float
-    health_caution_threshold: float
-    cultural_rich_threshold: float
-    cultural_moderate_threshold: float
+    score_normal_threshold: float
+    score_caution_threshold: float
 
 
 class ThresholdsUpdate(BaseModel):
-    health_normal_threshold: float | None = None
-    health_caution_threshold: float | None = None
-    cultural_rich_threshold: float | None = None
-    cultural_moderate_threshold: float | None = None
+    score_normal_threshold: float | None = None
+    score_caution_threshold: float | None = None
 
 
 class SharedViewSettingsResponse(BaseModel):

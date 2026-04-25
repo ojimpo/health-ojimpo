@@ -103,9 +103,7 @@ INSERT OR IGNORE INTO source_settings (id, name, category, icon, display_type, c
 
 -- Seed: Global settings defaults
 INSERT OR IGNORE INTO global_settings (key, value) VALUES
-    ('health_normal_threshold', '70'),
-    ('health_caution_threshold', '40'),
-    ('cultural_rich_threshold', '70'),
-    ('cultural_moderate_threshold', '40'),
+    ('score_normal_threshold', '70'),
+    ('score_caution_threshold', '40'),
     ('shared_view_token', hex(randomblob(16))),
     ('shared_view_enabled', 'true');

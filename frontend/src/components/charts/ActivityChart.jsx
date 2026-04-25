@@ -13,7 +13,8 @@ const OVERLAY_KEYS = new Set([
 ])
 
 // SCORE mode zone bands on right Y axis [0, 140]
-// Thresholds match backend scoring.py: health_caution=40, health_normal=70 (same for cultural)
+// Thresholds must match backend score_caution_threshold/score_normal_threshold
+// (seeded in migrations/001_initial.sql, used in scoring.py and aggregation.py)
 const SCORE_ZONES = [
   { y1: 0, y2: 40, fill: '#FF1744', label: 'CRITICAL / LOW' },
   { y1: 40, y2: 70, fill: '#FFB86C', label: 'CAUTION / MODERATE' },

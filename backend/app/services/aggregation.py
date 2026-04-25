@@ -175,24 +175,24 @@ def _compute_point_status(
     activity_vals = [scores.get(k, 0) for k in activity_cats]
     cultural_pct = sum(activity_vals) / len(activity_vals) if activity_vals else None
 
+    # Unified threshold for both health and cultural
+    sn = thresholds.get("score_normal_threshold", 70)
+    sc = thresholds.get("score_caution_threshold", 40)
+
     health = None
     if baseline_avg is not None:
-        hn = thresholds.get("health_normal_threshold", 70)
-        hc = thresholds.get("health_caution_threshold", 40)
-        if baseline_avg >= hn:
+        if baseline_avg >= sn:
             health = "NORMAL"
-        elif baseline_avg >= hc:
+        elif baseline_avg >= sc:
             health = "CAUTION"
         else:
             health = "CRITICAL"
 
     cultural = None
     if cultural_pct is not None:
-        cr = thresholds.get("cultural_rich_threshold", 70)
-        cm = thresholds.get("cultural_moderate_threshold", 40)
-        if cultural_pct >= cr:
+        if cultural_pct >= sn:
             cultural = "RICH"
-        elif cultural_pct >= cm:
+        elif cultural_pct >= sc:
             cultural = "MODERATE"
         else:
             cultural = "LOW"
