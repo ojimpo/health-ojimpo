@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from 'recharts'
 import { activityCategories, stateCategories } from '../../constants/categories'
 import { healthStatusConfig, culturalStatusConfig } from '../../constants/statusConfig'
 import { useSortedCategories } from '../../hooks/useSortedCategories'
@@ -9,10 +9,16 @@ const MODES = ['ACTIVITY', 'SCORE', 'CONDITION']
 
 const OVERLAY_KEYS = new Set([
   'health_score', 'cultural_score',
-  'health_normal', 'health_caution', 'health_critical',
-  'cultural_rich', 'cultural_moderate', 'cultural_low',
   ...stateCategories.map(c => c.key),
 ])
+
+// SCORE mode zone bands on right Y axis [0, 140]
+// Thresholds match backend scoring.py: health_caution=40, health_normal=70 (same for cultural)
+const SCORE_ZONES = [
+  { y1: 0, y2: 40, fill: '#FF1744', label: 'CRITICAL / LOW' },
+  { y1: 40, y2: 70, fill: '#FFB86C', label: 'CAUTION / MODERATE' },
+  { y1: 70, y2: 140, fill: '#50FA7B', label: 'NORMAL / RICH' },
+]
 
 function ChartTooltip({ active, payload, label, mode }) {
   if (!active || !payload || !payload.length) return null
@@ -89,38 +95,6 @@ function getTickInterval(dataLength, mobile) {
   return 3
 }
 
-function prepareScoreData(data) {
-  if (!data) return data
-  return data.map((point, i) => {
-    const prev = i > 0 ? data[i - 1] : null
-    const out = { ...point }
-
-    const hs = point.health_status
-    const hv = point.health_score
-    out.health_normal = hs === 'NORMAL' ? hv : null
-    out.health_caution = hs === 'CAUTION' ? hv : null
-    out.health_critical = hs === 'CRITICAL' ? hv : null
-    if (prev && prev.health_status !== hs && prev.health_score != null) {
-      if (prev.health_status === 'NORMAL') out.health_normal = hv
-      if (prev.health_status === 'CAUTION') out.health_caution = hv
-      if (prev.health_status === 'CRITICAL') out.health_critical = hv
-    }
-
-    const cs = point.cultural_status
-    const cv = point.cultural_score
-    out.cultural_rich = cs === 'RICH' ? cv : null
-    out.cultural_moderate = cs === 'MODERATE' ? cv : null
-    out.cultural_low = cs === 'LOW' ? cv : null
-    if (prev && prev.cultural_status !== cs && prev.cultural_score != null) {
-      if (prev.cultural_status === 'RICH') out.cultural_rich = cv
-      if (prev.cultural_status === 'MODERATE') out.cultural_moderate = cv
-      if (prev.cultural_status === 'LOW') out.cultural_low = cv
-    }
-
-    return out
-  })
-}
-
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   useState(() => {
@@ -148,7 +122,7 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
   const isMobile = useIsMobile()
   const isOverlay = mode !== 'ACTIVITY'
   const sortedCategories = useSortedCategories(data)
-  const chartData = mode === 'SCORE' ? prepareScoreData(data) : data
+  const chartData = data
   const chartHeight = isMobile ? 300 : 450
   const yMax = getYMax(data)
 
@@ -229,6 +203,19 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
             strokeDasharray="6 4"
             label={{ value: 'BASE 100', position: 'insideTopLeft', fill: 'rgba(255,255,255,0.12)', fontSize: 9, fontFamily: "'JetBrains Mono'" }}
           />
+          {/* SCORE mode: status zone bands on right axis */}
+          {mode === 'SCORE' && SCORE_ZONES.map(z => (
+            <ReferenceArea
+              key={z.label}
+              yAxisId="right"
+              y1={z.y1}
+              y2={z.y2}
+              fill={z.fill}
+              fillOpacity={0.18}
+              stroke="none"
+              ifOverflow="visible"
+            />
+          ))}
           <Tooltip content={<ChartTooltip mode={mode} />} />
           {/* Stacked area — always shown, monochrome in overlay modes */}
           {sortedCategories.map(c => (
@@ -246,45 +233,30 @@ export default function ActivityChart({ data, hoveredCategory, height = 350, sat
               activeDot={isMobile ? false : { r: 4, fill: isOverlay ? '#555' : c.color, stroke: '#07080F', strokeWidth: 2 }}
             />
           ))}
-          {/* SCORE mode: health score lines */}
-          {[
-            { key: 'health_normal', color: '#50FA7B' },
-            { key: 'health_caution', color: '#FFB86C' },
-            { key: 'health_critical', color: '#FF1744' },
-          ].map(s => (
-            <Line
-              key={s.key}
-              yAxisId="right"
-              type="linear"
-              dataKey={s.key}
-              stroke={s.color}
-              strokeWidth={2}
-              hide={mode !== 'SCORE'}
-              dot={false}
-              activeDot={mode === 'SCORE' ? { r: 4, fill: s.color, stroke: '#07080F', strokeWidth: 2 } : false}
-              connectNulls={false}
-            />
-          ))}
-          {/* SCORE mode: cultural score lines */}
-          {[
-            { key: 'cultural_rich', color: '#00F0FF' },
-            { key: 'cultural_moderate', color: '#FFB86C' },
-            { key: 'cultural_low', color: '#FF3366' },
-          ].map(s => (
-            <Line
-              key={s.key}
-              yAxisId="right"
-              type="linear"
-              dataKey={s.key}
-              stroke={s.color}
-              strokeWidth={2}
-              strokeDasharray="6 3"
-              hide={mode !== 'SCORE'}
-              dot={false}
-              activeDot={mode === 'SCORE' ? { r: 4, fill: s.color, stroke: '#07080F', strokeWidth: 2 } : false}
-              connectNulls={false}
-            />
-          ))}
+          {/* SCORE mode: single-color score lines (status conveyed by background zones) */}
+          <Line
+            yAxisId="right"
+            type="linear"
+            dataKey="health_score"
+            stroke="#50FA7B"
+            strokeWidth={2}
+            hide={mode !== 'SCORE'}
+            dot={false}
+            activeDot={mode === 'SCORE' ? { r: 4, fill: '#50FA7B', stroke: '#07080F', strokeWidth: 2 } : false}
+            connectNulls={false}
+          />
+          <Line
+            yAxisId="right"
+            type="linear"
+            dataKey="cultural_score"
+            stroke="#00F0FF"
+            strokeWidth={2}
+            strokeDasharray="6 3"
+            hide={mode !== 'SCORE'}
+            dot={false}
+            activeDot={mode === 'SCORE' ? { r: 4, fill: '#00F0FF', stroke: '#07080F', strokeWidth: 2 } : false}
+            connectNulls={false}
+          />
           {/* CONDITION mode: state lines */}
           {stateCategories.map(c => (
             <Line
