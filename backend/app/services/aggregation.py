@@ -15,7 +15,12 @@ from ..models.schemas import (
     TrendComment,
 )
 from ..sources.registry import SOURCE_ADAPTERS
-from .scoring import calculate_scores, calculate_source_score, get_thresholds
+from .scoring import (
+    calculate_scores,
+    calculate_source_score,
+    get_source_first_dates,
+    get_thresholds,
+)
 from .trend import generate_trend_comments
 
 logger = logging.getLogger(__name__)
@@ -96,24 +101,60 @@ _STATE_DAILY_BASELINES = {
 }
 
 
-async def _get_category_classifications() -> tuple[set[str], set[str]]:
-    """Get baseline and activity category sets from source_settings.
+async def _fetch_chart_source_meta() -> list[tuple]:
+    """Fetch all active source metadata used for chart aggregation.
 
-    Returns (baseline_categories, activity_categories).
+    Returns list of (id, category, base_value, period, coeff,
+    half_life, score_method, classification, display_type).
     """
     async with get_db_context() as db:
         rows = await db.execute_fetchall(
-            "SELECT category, classification, display_type FROM source_settings WHERE status = 'active'"
+            """SELECT id, category, base_value, aggregation_period, spontaneity_coefficient,
+                      decay_half_life, score_method, classification, display_type
+            FROM source_settings WHERE status = 'active'"""
         )
+    return [
+        (
+            r[0], r[1], float(r[2]), int(r[3]), float(r[4]),
+            float(r[5]) if r[5] is not None else None,
+            r[6], r[7], r[8],
+        )
+        for r in rows
+    ]
+
+
+def _resolve_chart_meta_for_date(
+    sources: list[tuple], first_dates: dict[str, str], for_date_str: str
+) -> tuple[dict[str, float], list[tuple[str, str]], set[str], set[str]]:
+    """Compute (daily_baselines, decay_sources, baseline_cats, activity_cats)
+    using only sources that had produced data on or before for_date_str.
+
+    Per-date filtering avoids depressing past scores with sources that
+    didn't exist yet (e.g. NextDNS added in 2026-04 shouldn't penalise 2025).
+    """
+    daily_baselines: dict[str, float] = {}
+    decay_sources: list[tuple[str, str]] = []
     baseline_cats: set[str] = set()
     activity_cats: set[str] = set()
-    for cat, classification, display_type in rows:
-        mapped = _map_category(cat)
+
+    for source_id, category, base_value, period, coeff, half_life, score_method, classification, display_type in sources:
+        first = first_dates.get(source_id)
+        if not first or first > for_date_str:
+            continue
+        cat = _map_category(category)
+        if display_type != "card_only":
+            if half_life is not None and score_method != "daily_avg":
+                decay_sources.append((source_id, cat))
+            else:
+                daily = base_value / max(period, 1) * coeff
+                daily_baselines[cat] = daily_baselines.get(cat, 0) + daily
         if classification in ("baseline", "both", "health_only"):
-            baseline_cats.add(mapped)
+            baseline_cats.add(cat)
         if display_type == "activity":
-            activity_cats.add(mapped)
-    return baseline_cats, activity_cats
+            activity_cats.add(cat)
+
+    daily_baselines.update(_STATE_DAILY_BASELINES)
+    return daily_baselines, decay_sources, baseline_cats, activity_cats
 
 
 def _compute_point_status(
@@ -164,31 +205,6 @@ def _compute_point_status(
     )
 
 
-async def _get_daily_baselines() -> tuple[dict[str, float], set[str]]:
-    """Get daily baseline per category and set of decay-enabled source IDs.
-
-    Returns ({category: daily_expected_value}, {decay_source_ids}).
-    Decay-enabled sources are excluded from the baseline dict (handled separately).
-    """
-    async with get_db_context() as db:
-        rows = await db.execute_fetchall(
-            """SELECT id, category, base_value, aggregation_period, spontaneity_coefficient, decay_half_life, score_method
-            FROM source_settings WHERE status = 'active' AND display_type != 'card_only'"""
-        )
-    baselines: dict[str, float] = {}
-    decay_source_ids: set[str] = set()
-    for source_id, cat, base_val, period, coeff, half_life, score_method in rows:
-        cat = _map_category(cat)
-        if half_life is not None and score_method != "daily_avg":
-            decay_source_ids.add(source_id)
-            continue  # chart score computed via calculate_source_score
-        daily = float(base_val) / max(int(period), 1) * float(coeff)
-        baselines[cat] = baselines.get(cat, 0) + daily
-
-    baselines.update(_STATE_DAILY_BASELINES)
-    return baselines, decay_source_ids
-
-
 def _normalize_to_scores(
     cat_data: dict[str, float],
     daily_baselines: dict[str, float],
@@ -204,16 +220,6 @@ def _normalize_to_scores(
         else:
             result[cat] = raw  # no baseline; pass through
     return result
-
-
-async def _get_decay_source_info() -> list[tuple[str, str]]:
-    """Get (source_id, category) for all active decay-enabled sources."""
-    async with get_db_context() as db:
-        rows = await db.execute_fetchall(
-            """SELECT id, category FROM source_settings
-            WHERE status = 'active' AND decay_half_life IS NOT NULL AND score_method != 'daily_avg'"""
-        )
-    return [(row[0], _map_category(row[1])) for row in rows]
 
 
 async def _add_decay_scores(scores: dict[str, float], decay_sources: list[tuple[str, str]], ref_date: date) -> None:
@@ -245,10 +251,9 @@ async def _get_chart_data(
 
     days_back, granularity = _get_range_params(time_range)
     start_date = for_date - timedelta(days=days_back)
-    daily_baselines, decay_source_ids = await _get_daily_baselines()
-    decay_sources = await _get_decay_source_info()
+    sources_meta = await _fetch_chart_source_meta()
+    first_dates = await get_source_first_dates()
     thresholds = await get_thresholds()
-    baseline_cats, activity_cats = await _get_category_classifications()
 
     # SQL filter: exclude decay sources and card_only sources from bucket aggregation
     non_decay_filter = """source IN (
@@ -278,6 +283,9 @@ async def _get_chart_data(
             while current <= for_date:
                 d = current.isoformat()
                 cat_data = data_map.get(d, {})
+                daily_baselines, decay_sources, baseline_cats, activity_cats = (
+                    _resolve_chart_meta_for_date(sources_meta, first_dates, d)
+                )
                 scores = _normalize_to_scores(cat_data, daily_baselines, 1)
                 await _add_decay_scores(scores, decay_sources, current)
                 h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
@@ -306,6 +314,9 @@ async def _get_chart_data(
                     cat = _map_category(row[0])
                     cat_data[cat] = cat_data.get(cat, 0) + float(row[1])
 
+                daily_baselines, decay_sources, baseline_cats, activity_cats = (
+                    _resolve_chart_meta_for_date(sources_meta, first_dates, week_end.isoformat())
+                )
                 scores = _normalize_to_scores(cat_data, daily_baselines, bucket_days)
                 await _add_decay_scores(scores, decay_sources, week_end)
                 h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
@@ -336,6 +347,9 @@ async def _get_chart_data(
                     cat = _map_category(row[0])
                     cat_data[cat] = cat_data.get(cat, 0) + float(row[1])
 
+                daily_baselines, decay_sources, baseline_cats, activity_cats = (
+                    _resolve_chart_meta_for_date(sources_meta, first_dates, end.isoformat())
+                )
                 scores = _normalize_to_scores(cat_data, daily_baselines, bucket_days)
                 await _add_decay_scores(scores, decay_sources, end)
                 h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)

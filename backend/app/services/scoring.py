@@ -18,6 +18,20 @@ async def get_thresholds() -> dict:
         return {row[0]: float(row[1]) for row in rows}
 
 
+async def get_source_first_dates() -> dict[str, str]:
+    """Return the first activity_records.date per source (ISO string).
+
+    Sources without any records are absent from the dict. Used to exclude
+    sources from past-date status aggregation when they hadn't started
+    producing data yet — otherwise their zero contribution drags scores down.
+    """
+    async with get_db_context() as db:
+        rows = await db.execute_fetchall(
+            "SELECT source, MIN(date) FROM activity_records GROUP BY source"
+        )
+    return {row[0]: row[1] for row in rows if row[1]}
+
+
 async def get_effective_baseline(source_id: str, for_date: str) -> tuple[float, int, float | None]:
     """Get the effective baseline value, aggregation period, and decay half_life for a source.
 
@@ -231,6 +245,8 @@ async def calculate_scores(for_date: date | None = None) -> dict:
         for_date = date.today()
 
     thresholds = await get_thresholds()
+    first_dates = await get_source_first_dates()
+    for_date_str = for_date.isoformat()
 
     async with get_db_context() as db:
         # Get all active baseline sources
@@ -241,6 +257,11 @@ async def calculate_scores(for_date: date | None = None) -> dict:
         activity_rows = await db.execute_fetchall(
             "SELECT id FROM source_settings WHERE status = 'active' AND display_type IN ('activity', 'card_only')"
         )
+
+    # Drop sources that hadn't started producing data by for_date.
+    # Otherwise their zero score is averaged in and depresses past status.
+    baseline_rows = [r for r in baseline_rows if (first_dates.get(r[0]) or "9999") <= for_date_str]
+    activity_rows = [r for r in activity_rows if (first_dates.get(r[0]) or "9999") <= for_date_str]
 
     # Calculate baseline score (health indicator)
     baseline_scores = []
