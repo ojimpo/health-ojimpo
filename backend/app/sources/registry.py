@@ -56,9 +56,19 @@ def get_adapter(source_id: str) -> SourceAdapter | None:
 
 
 async def get_configured_adapters() -> list[SourceAdapter]:
-    """Return only adapters that have valid credentials."""
+    """Return only adapters that have valid credentials AND are not disabled."""
+    from ..database import get_db_context
+
+    async with get_db_context() as db:
+        rows = await db.execute_fetchall(
+            "SELECT id FROM source_settings WHERE status = 'disabled'"
+        )
+        disabled = {r[0] for r in rows}
+
     result = []
     for adapter in SOURCE_ADAPTERS.values():
+        if adapter.source_id in disabled:
+            continue
         if await adapter.is_configured():
             result.append(adapter)
     return result

@@ -131,6 +131,40 @@ async def receive_webhook(
     raise HTTPException(400, "Provide source/date/minutes, entries[], or source/action")
 
 
+class ClaudeSessionPayload(BaseModel):
+    """Claude Codeのフックから送られてくる日次作業分数。"""
+    date: str  # YYYY-MM-DD（端末ローカル日付）
+    minutes: float  # 当日の累積作業分数
+    host: str  # クライアント識別子（hostname推奨）
+
+
+@router.post(
+    "/webhook/claude_session",
+    summary="Claude Code 作業時間を受信",
+    description="各端末のStopフックから送信される日次作業分数。host単位で記録し、aggregateで合算。Bearer認証。",
+)
+async def receive_claude_session(
+    body: ClaudeSessionPayload,
+    authorization: str | None = Header(default=None),
+):
+    _verify_webhook_token(authorization)
+
+    adapter = get_adapter("claude")
+    if not adapter:
+        raise HTTPException(500, "claude adapter not registered")
+
+    await adapter.store_webhook_data(body.date, body.minutes, body.host)
+    await adapter.aggregate()
+
+    return {
+        "status": "stored",
+        "source": "claude",
+        "date": body.date,
+        "host": body.host,
+        "minutes": body.minutes,
+    }
+
+
 @router.get(
     "/status",
     response_model=IngestStatusResponse,

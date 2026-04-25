@@ -79,8 +79,7 @@
 | kashidashi（図書館CD貸出） | 音楽 | 自作 API | 稼働中 |
 | 読書メーター | 読書 | sync-gateway 経由 | 稼働中 |
 | Filmarks（映画） | 映画 | sync-gateway 経由 | 稼働中 |
-| GitHub | コード | Fine-grained PAT | 稼働中 |
-| Claude Code | コード | ローカル JSONL 集計 | 稼働中 |
+| Claude Code | コード | Stop hook + Webhook（セッション時間ベース、複数端末対応） | 稼働中 |
 | NextDNS SNS | SNS | NextDNS API | 稼働中 |
 | NextDNS Shopping | 買い物 | NextDNS API | 稼働中 |
 | NextDNS Vitality | 活力 | NextDNS API | 稼働中 |
@@ -101,14 +100,21 @@
 |--------|------|
 | Instagram / Twitter（iOS Shortcut） | NextDNS SNS に移行（2026-04） |
 | Gmail（購買履歴） | NextDNS Shopping に移行（2026-04） |
+| GitHub（コミット数） | Claude Code セッション時間に統合（2026-04） |
 | OpenAI | 対応予定なし |
-| Spotify Podcasts | Coming Soon |
+| Spotify Podcasts | 稼働中（2026-04） |
 
 設定画面に全ソースが表示され、未対応のものは「Coming Soon」として表示される。
 
 ### sync-gateway について
 
 読書メーターと Filmarks は公式 API が存在しないため、別途スクレイピングを行う [sync-gateway](https://github.com/ojimpo/sync-gateway) 経由でデータを取得する。
+
+### Claude Code セッション時間の収集
+
+Claude Code の作業時間は `~/.claude/projects/**/*.jsonl` のタイムスタンプから推定する（連続イベント間隔が 5分以内なら同一セッションとして加算）。各クライアントマシンで Claude Code の **Stop hook** を設定すると、セッション終了時に当日の累積分数が `/api/ingest/webhook/claude_session` に送信され、`host` 単位で記録された後 `date` 単位で合算される。これにより複数端末（NAS / Mac / iPad 等）での作業を取りこぼしなく集約できる。
+
+セットアップ手順は [scripts/](scripts/) 配下のスクリプトと `~/.claude/settings.json` の Stop hook 設定で完結する。詳細は [scripts/README.md](scripts/README.md) を参照。
 
 ## セットアップ
 
@@ -162,8 +168,6 @@ docker compose up -d --build
 | `GCAL_PRIVATE_CALENDAR_ID` | - | プライベート予定カレンダーのID |
 | `GCAL_LIVE_CALENDAR_ID` | - | ライブ専用カレンダーのID |
 | `SYNC_GATEWAY_BASE_URL` | - | sync-gateway の URL |
-| `GITHUB_TOKEN` | - | GitHub Fine-grained PAT |
-| `GITHUB_USER` | - | GitHub ユーザー名 |
 | `KASHIDASHI_BASE_URL` | - | kashidashi API の URL |
 | `LINE_CHANNEL_ACCESS_TOKEN` | - | LINE Messaging API チャネルアクセストークン |
 | `LINE_CHANNEL_SECRET` | - | LINE Messaging API チャネルシークレット |

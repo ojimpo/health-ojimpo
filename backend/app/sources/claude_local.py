@@ -1,85 +1,83 @@
 import logging
-from datetime import date, datetime, timezone
+from datetime import date
 
 from ..database import get_db_context
-from ..services.claude_local import fetch_daily_usage
 from .base import SourceAdapter
 
 logger = logging.getLogger(__name__)
 
 
 class ClaudeLocalAdapter(SourceAdapter):
+    """Claude Codeのセッション時間（分）をwebhook経由で集計するアダプタ。
+
+    旧トークンベース集計から切り替え。各クライアントマシン（arigato-nas含む）の
+    Stopフックが日次の作業分数をPOSTしてくる。host列でディザンビゲートし、
+    aggregate時にdate単位で合算する。
+    """
+
     source_id = "claude"
     display_name = "Claude Code"
 
     async def is_configured(self) -> bool:
-        from ..services.claude_local import CLAUDE_DIR
-        return CLAUDE_DIR.exists() and any(CLAUDE_DIR.rglob("*.jsonl"))
+        # webhookで受信するため常にconfigured扱い
+        return True
 
     async def fetch_and_store(self, from_date: str | None = None) -> tuple[int, int]:
-        records = fetch_daily_usage()
+        # 外部fetchはなし。webhook経由でstore_webhook_dataが呼ばれる。
+        return 0, 0
 
-        if from_date:
-            records = [r for r in records if r["date"] >= from_date]
+    async def store_webhook_data(
+        self, webhook_date: str, minutes: float, host: str = "unknown"
+    ) -> None:
+        """ホスト別の日次作業分数を保存（同date+host内で最大値を採用）。
 
-        stored = 0
+        フックは1日のうち何度も呼ばれうるが、毎回当日全体の累積分数を計算して
+        送ってくる前提なので、追加ではなく最大値で更新する（リトライ・重複耐性）。
+        """
         async with get_db_context() as db:
-            for r in records:
-                try:
-                    await db.execute(
-                        """INSERT OR REPLACE INTO claude_local_usage
-                        (date, input_tokens, cache_creation_tokens, cache_read_tokens,
-                         output_tokens, total_tokens)
-                        VALUES (?, ?, ?, ?, ?, ?)""",
-                        (
-                            r["date"],
-                            r["input_tokens"],
-                            r["cache_creation_tokens"],
-                            r["cache_read_tokens"],
-                            r["output_tokens"],
-                            r["total_tokens"],
-                        ),
-                    )
-                    stored += 1
-                except Exception:
-                    logger.exception("Error storing Claude local usage for %s", r["date"])
+            await db.execute(
+                """INSERT INTO claude_session_minutes (date, host, minutes, updated_at)
+                VALUES (?, ?, ?, datetime('now'))
+                ON CONFLICT(date, host) DO UPDATE SET
+                    minutes = MAX(claude_session_minutes.minutes, excluded.minutes),
+                    updated_at = excluded.updated_at""",
+                (webhook_date, host, minutes),
+            )
             await db.commit()
-
-        logger.info("Stored %d Claude Code local usage records", stored)
-        return len(records), stored
+        logger.info(
+            "claude session: host=%s date=%s minutes=%.1f stored",
+            host, webhook_date, minutes,
+        )
 
     async def aggregate(self) -> None:
         async with get_db_context() as db:
+            await db.execute("DELETE FROM activity_records WHERE source = 'claude'")
             await db.execute(
-                """INSERT OR REPLACE INTO activity_records
+                """INSERT INTO activity_records
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
                 SELECT
                     date,
                     'claude',
                     'coding',
-                    0,
-                    ROUND(total_tokens / 1000.0, 1),
-                    'k tokens',
-                    json_object(
-                        'input', input_tokens,
-                        'cache_creation', cache_creation_tokens,
-                        'cache_read', cache_read_tokens,
-                        'output', output_tokens,
-                        'total', total_tokens
-                    )
-                FROM claude_local_usage
+                    ROUND(SUM(minutes), 1),
+                    ROUND(SUM(minutes), 1),
+                    'min',
+                    json_object('hosts', json_group_array(json_object('host', host, 'minutes', ROUND(minutes, 1))))
+                FROM claude_session_minutes
+                GROUP BY date
                 """,
             )
             await db.commit()
-        logger.info("Claude Code local usage aggregation completed")
+        logger.info("Claude session aggregation completed")
 
     async def get_recent_activities(
         self, limit: int = 8, include_detail: bool = True
     ) -> list[dict]:
         async with get_db_context() as db:
             rows = await db.execute_fetchall(
-                """SELECT date, total_tokens, output_tokens
-                FROM claude_local_usage
+                """SELECT date, ROUND(SUM(minutes), 1) AS total_min, COUNT(DISTINCT host) AS host_count
+                FROM claude_session_minutes
+                GROUP BY date
                 ORDER BY date DESC
                 LIMIT ?""",
                 (limit,),
@@ -97,14 +95,22 @@ class ClaudeLocalAdapter(SourceAdapter):
                 else:
                     time_str = f"{diff}日前"
 
-                total_k = round(row[1] / 1000)
-                output_k = round(row[2] / 1000)
+                mins = round(row[1] or 0)
+                hours = mins // 60
+                m = mins % 60
+                if hours > 0:
+                    dur = f"{hours}時間{m}分"
+                else:
+                    dur = f"{m}分"
+
+                host_count = row[2] or 0
+                detail = f"{host_count}端末" if include_detail and host_count > 1 else None
 
                 activities.append({
                     "time": time_str,
                     "icon": "🤖",
-                    "text": f"Claude Code {total_k:,}kトークン使用",
-                    "detail": f"出力: {output_k:,}k" if include_detail else None,
+                    "text": f"Claude Code {dur}",
+                    "detail": detail,
                     "color": "#D4A574",
                     "sort_date": row[0],
                 })

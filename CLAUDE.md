@@ -60,7 +60,7 @@
 
 - `backend/app/migrations/` に連番SQLファイル
 - init_db: duplicate column/already exists エラーを自動スキップ（冪等化）
-- 最新: 023
+- 最新: 027
 - **コード変更はリビルドが必要**: `docker compose build backend && docker compose up -d backend`
 
 ## デプロイ

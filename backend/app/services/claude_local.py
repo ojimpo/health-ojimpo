@@ -1,39 +1,27 @@
 import json
 import logging
+import os
 import pathlib
 from collections import defaultdict
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
-
-import os
 
 CLAUDE_DIR = pathlib.Path(
     os.environ.get("CLAUDE_PROJECTS_DIR", str(pathlib.Path.home() / ".claude" / "projects"))
 )
 
+# セッション切れと判定する無操作時間（秒）
+IDLE_THRESHOLD_SECONDS = 5 * 60
 
-def _aggregate_from_logs() -> dict[str, dict]:
-    """~/.claude/projects/**/*.jsonl からトークン使用量を日次集計する。
 
-    ストリーミング途中の重複エントリは uuid でデデュープし、
-    'server_tool_use' フィールドを持つ完了エントリのみを集計対象とする。
-    """
-    daily: dict[str, dict] = defaultdict(
-        lambda: {
-            "input_tokens": 0,
-            "cache_creation_tokens": 0,
-            "cache_read_tokens": 0,
-            "output_tokens": 0,
-        }
-    )
-    seen_uuids: set[str] = set()
+def _iter_jsonl_timestamps(claude_dir: pathlib.Path):
+    """全JSONLからタイムスタンプ(UTC)を yield する。"""
+    if not claude_dir.exists():
+        logger.warning("Claude projects directory not found: %s", claude_dir)
+        return
 
-    if not CLAUDE_DIR.exists():
-        logger.warning("Claude projects directory not found: %s", CLAUDE_DIR)
-        return {}
-
-    for jsonl in CLAUDE_DIR.rglob("*.jsonl"):
+    for jsonl in claude_dir.rglob("*.jsonl"):
         try:
             for line in jsonl.read_text(encoding="utf-8").splitlines():
                 if not line.strip():
@@ -42,65 +30,46 @@ def _aggregate_from_logs() -> dict[str, dict]:
                     entry = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-
-                usage = entry.get("message", {}).get("usage", {})
-                if not usage or "output_tokens" not in usage:
+                ts = entry.get("timestamp", "")
+                if not ts:
                     continue
-                # 完了エントリのみ（server_tool_use フィールドが存在）
-                if "server_tool_use" not in usage:
+                try:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                except ValueError:
                     continue
-
-                uuid = entry.get("uuid", "")
-                if uuid in seen_uuids:
-                    continue
-                seen_uuids.add(uuid)
-
-                timestamp = entry.get("timestamp", "")
-                date_str = timestamp[:10] if timestamp else ""
-                if not date_str:
-                    continue
-
-                daily[date_str]["input_tokens"] += usage.get("input_tokens", 0)
-                daily[date_str]["cache_creation_tokens"] += usage.get(
-                    "cache_creation_input_tokens", 0
-                )
-                daily[date_str]["cache_read_tokens"] += usage.get(
-                    "cache_read_input_tokens", 0
-                )
-                daily[date_str]["output_tokens"] += usage.get("output_tokens", 0)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                yield dt
         except Exception:
             logger.exception("Error reading %s", jsonl)
 
-    return daily
 
+def compute_daily_session_minutes(
+    claude_dir: pathlib.Path | None = None,
+    idle_threshold_seconds: int = IDLE_THRESHOLD_SECONDS,
+) -> dict[str, float]:
+    """JSONLのタイムスタンプから日次の作業時間（分）を推定する。
 
-def fetch_daily_usage() -> list[dict]:
-    """日次トークン使用量のリストを返す。
+    連続するイベント間の間隔が idle_threshold_seconds 以下なら同一セッションとして
+    時間を加算する。閾値を超えたら離席とみなして加算しない。
+    日付はUTC基準で割り当てる（タイムスタンプの先頭10文字）。
 
     Returns:
-        List of dicts: {date, input_tokens, cache_creation_tokens,
-                        cache_read_tokens, output_tokens, total_tokens}
+        {"YYYY-MM-DD": minutes}
     """
-    raw = _aggregate_from_logs()
-    results = []
-    for date_str in sorted(raw):
-        v = raw[date_str]
-        total = (
-            v["input_tokens"]
-            + v["cache_creation_tokens"]
-            + v["cache_read_tokens"]
-            + v["output_tokens"]
-        )
-        if total == 0:
-            continue
-        results.append({
-            "date": date_str,
-            "input_tokens": v["input_tokens"],
-            "cache_creation_tokens": v["cache_creation_tokens"],
-            "cache_read_tokens": v["cache_read_tokens"],
-            "output_tokens": v["output_tokens"],
-            "total_tokens": total,
-        })
+    if claude_dir is None:
+        claude_dir = CLAUDE_DIR
 
-    logger.info("Aggregated Claude Code usage: %d days from local logs", len(results))
-    return results
+    timestamps = sorted(_iter_jsonl_timestamps(claude_dir))
+    daily: dict[str, float] = defaultdict(float)
+
+    prev: datetime | None = None
+    for ts in timestamps:
+        if prev is not None:
+            gap = (ts - prev).total_seconds()
+            if 0 < gap <= idle_threshold_seconds:
+                date_str = ts.strftime("%Y-%m-%d")
+                daily[date_str] += gap / 60.0
+        prev = ts
+
+    return dict(daily)
