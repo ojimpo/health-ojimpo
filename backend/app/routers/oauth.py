@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from ..config import settings
+from ..database import get_db_context
 from ..services.oauth import store_tokens
 
 logger = logging.getLogger(__name__)
@@ -171,8 +172,15 @@ async def google_callback(code: str, state: str, request: Request):
         "scope": data.get("scope"),
     }
 
-    # Store tokens for all Google sources
+    # Store tokens for all Google sources that still exist in source_settings.
+    # gmail was removed in favor of NextDNS Shopping; skip it to avoid FK violation.
+    async with get_db_context() as db:
+        rows = await db.execute_fetchall(
+            "SELECT id FROM source_settings WHERE id IN ('gcal_private', 'gcal_live', 'gmail')"
+        )
+    existing = {row[0] for row in rows}
     for source_id in ("gcal_private", "gcal_live", "gmail"):
-        await store_tokens(source_id, token_data)
+        if source_id in existing:
+            await store_tokens(source_id, token_data)
 
     return RedirectResponse("/settings")
