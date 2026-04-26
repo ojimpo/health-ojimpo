@@ -84,7 +84,7 @@ def post_minutes(url: str, secret: str | None, date_str: str, minutes: float, ho
     req = urllib.request.Request(
         url,
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "User-Agent": "health-ojimpo-hook/1.0"},
         method="POST",
     )
     if secret:
