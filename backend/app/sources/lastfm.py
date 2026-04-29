@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from ..config import settings
 from ..database import get_db_context
 from ..services.lastfm import fetch_all_tracks, parse_scrobble
-from .base import SourceAdapter
+from .base import SourceAdapter, format_relative_day
 
 logger = logging.getLogger(__name__)
 
@@ -95,13 +95,7 @@ class LastfmAdapter(SourceAdapter):
             today = date.today()
             for row in rows:
                 d = date.fromisoformat(row[0])
-                diff = (today - d).days
-                if diff == 0:
-                    time_str = "今日"
-                elif diff == 1:
-                    time_str = "1日前"
-                else:
-                    time_str = f"{diff}日前"
+                time_str = format_relative_day(d, today)
 
                 tracks = row[1]
                 total_min = round(row[2] / 60) if row[2] else 0

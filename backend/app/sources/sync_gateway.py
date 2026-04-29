@@ -5,7 +5,7 @@ import httpx
 
 from ..config import settings
 from ..database import get_db_context
-from .base import SourceAdapter
+from .base import SourceAdapter, format_relative_day
 
 logger = logging.getLogger(__name__)
 
@@ -118,8 +118,7 @@ class SyncGatewayAdapter(SourceAdapter):
             today = date.today()
             for row in rows:
                 d = date.fromisoformat(row[0])
-                diff = (today - d).days
-                time_str = "今日" if diff == 0 else "1日前" if diff == 1 else f"{diff}日前"
+                time_str = format_relative_day(d, today)
                 count = int(row[1])
                 result.append({
                     "time": time_str,
@@ -153,8 +152,7 @@ class SyncGatewayAdapter(SourceAdapter):
             if not event_date:
                 continue
             d = date.fromisoformat(event_date[:10])
-            diff = (today - d).days
-            time_str = "今日" if diff == 0 else "1日前" if diff == 1 else f"{diff}日前"
+            time_str = format_relative_day(d, today)
 
             title = rec.get("title", "")
             author = rec.get("author", "")

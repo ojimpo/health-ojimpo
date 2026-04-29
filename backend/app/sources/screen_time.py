@@ -2,7 +2,7 @@ import logging
 from datetime import date
 
 from ..database import get_db_context
-from .base import SourceAdapter
+from .base import SourceAdapter, format_relative_day
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +80,7 @@ class ScreenTimeAdapter(SourceAdapter):
             today = date.today()
             for row in rows:
                 d = date.fromisoformat(row[0])
-                diff = (today - d).days
-                time_str = "今日" if diff == 0 else "1日前" if diff == 1 else f"{diff}日前"
+                time_str = format_relative_day(d, today)
 
                 mins = round(row[1])
                 hours = mins // 60

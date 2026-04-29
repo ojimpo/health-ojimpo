@@ -5,7 +5,7 @@ import httpx
 
 from ..config import settings
 from ..database import get_db_context
-from .base import SourceAdapter
+from .base import SourceAdapter, format_relative_day
 
 logger = logging.getLogger(__name__)
 
@@ -76,13 +76,7 @@ class KashidashiCDAdapter(SourceAdapter):
             today = date.today()
             for row in rows:
                 d = date.fromisoformat(row[0])
-                diff = (today - d).days
-                if diff == 0:
-                    time_str = "今日"
-                elif diff == 1:
-                    time_str = "1日前"
-                else:
-                    time_str = f"{diff}日前"
+                time_str = format_relative_day(d, today)
 
                 count = int(row[1])
                 activities.append({
