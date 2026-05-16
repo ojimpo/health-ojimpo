@@ -240,6 +240,11 @@ async def calculate_scores(for_date: date | None = None) -> dict:
     """Calculate all scores for a given date.
 
     Returns dict with health_status, cultural_status, and per-source scores.
+
+    Aggregation: per-source scores are first averaged within each category
+    (a category = one indicator), then category scores are averaged across
+    health/cultural axes. This prevents indicators with multiple sources
+    (e.g. vitality = nextdns + stash) from double-counting.
     """
     if for_date is None:
         for_date = date.today()
@@ -249,38 +254,32 @@ async def calculate_scores(for_date: date | None = None) -> dict:
     for_date_str = for_date.isoformat()
 
     async with get_db_context() as db:
-        # Get all active baseline sources
         baseline_rows = await db.execute_fetchall(
-            "SELECT id FROM source_settings WHERE status = 'active' AND classification IN ('baseline', 'both', 'health_only')"
+            "SELECT id, category FROM source_settings WHERE status = 'active' AND classification IN ('baseline', 'both', 'health_only')"
         )
-        # Get all active activity sources
         activity_rows = await db.execute_fetchall(
-            "SELECT id FROM source_settings WHERE status = 'active' AND display_type IN ('activity', 'card_only')"
+            "SELECT id, category FROM source_settings WHERE status = 'active' AND display_type IN ('activity', 'card_only')"
         )
 
-    # Drop sources that hadn't started producing data by for_date.
-    # Otherwise their zero score is averaged in and depresses past status.
     baseline_rows = [r for r in baseline_rows if (first_dates.get(r[0]) or "9999") <= for_date_str]
     activity_rows = [r for r in activity_rows if (first_dates.get(r[0]) or "9999") <= for_date_str]
 
-    # Calculate baseline score (health indicator)
-    baseline_scores = []
-    for row in baseline_rows:
-        score, _, _ = await calculate_source_score(row[0], for_date)
-        baseline_scores.append(score)
+    baseline_cats: dict[str, list[float]] = {}
+    for source_id, category in baseline_rows:
+        score, _, _ = await calculate_source_score(source_id, for_date)
+        baseline_cats.setdefault(category, []).append(score)
 
-    baseline_avg = sum(baseline_scores) / len(baseline_scores) if baseline_scores else 0
+    activity_cats: dict[str, list[float]] = {}
+    for source_id, category in activity_rows:
+        score, _, _ = await calculate_source_score(source_id, for_date)
+        activity_cats.setdefault(category, []).append(score)
 
-    # Calculate activity volume score (cultural indicator)
-    activity_scores = []
-    for row in activity_rows:
-        score, _, _ = await calculate_source_score(row[0], for_date)
-        activity_scores.append(score)
+    baseline_cat_scores = [sum(v) / len(v) for v in baseline_cats.values()]
+    activity_cat_scores = [sum(v) / len(v) for v in activity_cats.values()]
 
-    activity_total = sum(activity_scores)
-    # Cultural status is based on percentage of expected baseline total
-    expected_total = len(activity_scores) * 100 if activity_scores else 1
-    cultural_pct = (activity_total / expected_total) * 100
+    baseline_avg = sum(baseline_cat_scores) / len(baseline_cat_scores) if baseline_cat_scores else 0
+    cultural_pct = sum(activity_cat_scores) / len(activity_cat_scores) if activity_cat_scores else 0
+    activity_total = sum(activity_cat_scores)
 
     # Determine statuses (unified threshold for both health and cultural)
     score_normal = thresholds.get("score_normal_threshold", 70)

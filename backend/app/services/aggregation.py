@@ -125,14 +125,17 @@ async def _fetch_chart_source_meta() -> list[tuple]:
 
 def _resolve_chart_meta_for_date(
     sources: list[tuple], first_dates: dict[str, str], for_date_str: str
-) -> tuple[dict[str, float], list[tuple[str, str]], set[str], set[str]]:
-    """Compute (daily_baselines, decay_sources, baseline_cats, activity_cats)
+) -> tuple[dict[str, tuple], list[tuple[str, str]], set[str], set[str]]:
+    """Compute (source_meta_eligible, decay_sources, baseline_cats, activity_cats)
     using only sources that had produced data on or before for_date_str.
+
+    source_meta_eligible: dict source_id -> (chart_cat, base_value, period, coeff)
+    for non-decay non-card_only sources, used for per-source score computation.
 
     Per-date filtering avoids depressing past scores with sources that
     didn't exist yet (e.g. NextDNS added in 2026-04 shouldn't penalise 2025).
     """
-    daily_baselines: dict[str, float] = {}
+    source_meta_eligible: dict[str, tuple] = {}
     decay_sources: list[tuple[str, str]] = []
     baseline_cats: set[str] = set()
     activity_cats: set[str] = set()
@@ -146,15 +149,13 @@ def _resolve_chart_meta_for_date(
             if half_life is not None and score_method != "daily_avg":
                 decay_sources.append((source_id, cat))
             else:
-                daily = base_value / max(period, 1) * coeff
-                daily_baselines[cat] = daily_baselines.get(cat, 0) + daily
+                source_meta_eligible[source_id] = (cat, base_value, period, coeff)
         if classification in ("baseline", "both", "health_only"):
             baseline_cats.add(cat)
         if display_type == "activity":
             activity_cats.add(cat)
 
-    daily_baselines.update(_STATE_DAILY_BASELINES)
-    return daily_baselines, decay_sources, baseline_cats, activity_cats
+    return source_meta_eligible, decay_sources, baseline_cats, activity_cats
 
 
 def _compute_point_status(
@@ -205,37 +206,64 @@ def _compute_point_status(
     )
 
 
-def _normalize_to_scores(
-    cat_data: dict[str, float],
-    daily_baselines: dict[str, float],
-    bucket_days: int,
+async def _compute_bucket_category_scores(
+    source_meta_eligible: dict[str, tuple],
+    decay_sources: list[tuple[str, str]],
+    bucket_start: date,
+    bucket_end: date,
 ) -> dict[str, float]:
-    """Normalize raw minutes to scores (100 = baseline) for a time bucket."""
-    result = {}
-    for cat, raw in cat_data.items():
-        daily_base = daily_baselines.get(cat, 0)
-        expected = daily_base * bucket_days
-        if expected > 0:
-            result[cat] = (raw / expected) * 100
-        else:
-            result[cat] = raw  # no baseline; pass through
-    return result
+    """Compute per-category scores for a time bucket.
 
+    For non-decay sources: (source, activity_records.category) raw totals are
+    each normalized to baseline (100 = met) then averaged within each chart
+    category. For decay sources: calculate_source_score runs per source and
+    is averaged within each chart category.
 
-async def _add_decay_scores(scores: dict[str, float], decay_sources: list[tuple[str, str]], ref_date: date) -> None:
-    """Compute decay scores for decay-enabled sources and merge into scores dict.
-
-    Uses calculate_source_score which applies exponential decay weighting.
-    Multiple sources in the same category are averaged.
+    State categories (sleep/readiness/stress) use fixed daily baselines
+    (_STATE_DAILY_BASELINES) regardless of source_settings, since Oura
+    writes 3 categories from one source.
     """
-    cat_totals: dict[str, float] = {}
-    cat_counts: dict[str, int] = {}
-    for source_id, category in decay_sources:
-        score, _, _ = await calculate_source_score(source_id, ref_date)
-        cat_totals[category] = cat_totals.get(category, 0) + score
-        cat_counts[category] = cat_counts.get(category, 0) + 1
-    for cat in cat_totals:
-        scores[cat] = cat_totals[cat] / cat_counts[cat]
+    bucket_days = (bucket_end - bucket_start).days + 1
+    cat_source_scores: dict[str, list[float]] = {}
+
+    # Non-decay: aggregate raw totals per (source, activity_records.category)
+    if source_meta_eligible:
+        ids = list(source_meta_eligible.keys())
+        placeholders = ",".join(["?"] * len(ids))
+        async with get_db_context() as db:
+            rows = await db.execute_fetchall(
+                f"""SELECT source, category,
+                          SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as total
+                FROM activity_records
+                WHERE source IN ({placeholders}) AND date >= ? AND date <= ?
+                GROUP BY source, category""",
+                tuple(ids) + (bucket_start.isoformat(), bucket_end.isoformat()),
+            )
+
+        for source_id, raw_cat, raw_total in rows:
+            cat = _map_category(raw_cat)
+            raw = float(raw_total)
+            _, base_value, period, coeff = source_meta_eligible[source_id]
+
+            # State categories use a fixed daily baseline (Oura emits 3 cats
+            # from 1 source — source_settings.base_value only fits one).
+            if cat in _STATE_DAILY_BASELINES:
+                daily_base = _STATE_DAILY_BASELINES[cat]
+                avg = raw / bucket_days if bucket_days > 0 else 0
+                score = (avg / daily_base) * 100 if daily_base > 0 else 0
+            else:
+                daily_base = (base_value / max(period, 1)) * coeff
+                expected = daily_base * bucket_days
+                score = (raw / expected) * 100 if expected > 0 else 0
+
+            cat_source_scores.setdefault(cat, []).append(score)
+
+    # Decay: per-source score at bucket end, averaged within category
+    for source_id, cat in decay_sources:
+        score, _, _ = await calculate_source_score(source_id, bucket_end)
+        cat_source_scores.setdefault(cat, []).append(score)
+
+    return {c: sum(v) / len(v) for c, v in cat_source_scores.items()}
 
 
 async def _get_chart_data(
@@ -243,8 +271,9 @@ async def _get_chart_data(
 ) -> list[ChartDataPoint]:
     """Generate chart data points normalized to scores (100 = baseline).
 
-    Non-decay sources: bucket aggregation normalized by daily baseline × bucket_days.
-    Decay sources: calculate_source_score for the last day of each bucket.
+    Per (source, category) pair: raw aggregation normalized by source-specific
+    baseline. Within each category, source scores are averaged. Decay sources
+    use calculate_source_score for the last day of each bucket.
     """
     if for_date is None:
         for_date = date.today()
@@ -255,109 +284,61 @@ async def _get_chart_data(
     first_dates = await get_source_first_dates()
     thresholds = await get_thresholds()
 
-    # SQL filter: exclude decay sources and card_only sources from bucket aggregation
-    non_decay_filter = """source IN (
-        SELECT id FROM source_settings WHERE status = 'active' AND display_type != 'card_only' AND (decay_half_life IS NULL OR score_method = 'daily_avg')
-    )"""
-
-    async with get_db_context() as db:
-        if granularity == "daily":
-            rows = await db.execute_fetchall(
-                f"""SELECT date, category, SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as total_minutes
-                FROM activity_records
-                WHERE {non_decay_filter}
-                  AND date >= ? AND date <= ?
-                GROUP BY date, category
-                ORDER BY date""",
-                (start_date.isoformat(), for_date.isoformat()),
+    if granularity == "daily":
+        points = []
+        current = start_date
+        while current <= for_date:
+            d = current.isoformat()
+            meta_eligible, decay_sources, baseline_cats, activity_cats = (
+                _resolve_chart_meta_for_date(sources_meta, first_dates, d)
             )
+            scores = await _compute_bucket_category_scores(
+                meta_eligible, decay_sources, current, current
+            )
+            h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
+            points.append(_make_chart_point(
+                f"{current.month}/{current.day}", scores, h, c, hs, cs
+            ))
+            current += timedelta(days=1)
+        return points
 
-            data_map: dict[str, dict[str, float]] = {}
-            for row in rows:
-                d = row[0]
-                cat = _map_category(row[1])
-                data_map.setdefault(d, {})[cat] = data_map.get(d, {}).get(cat, 0) + float(row[2])
+    elif granularity == "weekly":
+        points = []
+        week_start = start_date
+        while week_start <= for_date:
+            week_end = min(week_start + timedelta(days=6), for_date)
+            meta_eligible, decay_sources, baseline_cats, activity_cats = (
+                _resolve_chart_meta_for_date(sources_meta, first_dates, week_end.isoformat())
+            )
+            scores = await _compute_bucket_category_scores(
+                meta_eligible, decay_sources, week_start, week_end
+            )
+            h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
+            points.append(_make_chart_point(
+                f"{week_start.month}/{week_start.day}", scores, h, c, hs, cs
+            ))
+            week_start += timedelta(days=7)
+        return points
 
-            points = []
-            current = start_date
-            while current <= for_date:
-                d = current.isoformat()
-                cat_data = data_map.get(d, {})
-                daily_baselines, decay_sources, baseline_cats, activity_cats = (
-                    _resolve_chart_meta_for_date(sources_meta, first_dates, d)
-                )
-                scores = _normalize_to_scores(cat_data, daily_baselines, 1)
-                await _add_decay_scores(scores, decay_sources, current)
-                h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
-                points.append(_make_chart_point(
-                    f"{current.month}/{current.day}", scores, h, c, hs, cs
-                ))
-                current += timedelta(days=1)
-            return points
-
-        elif granularity == "weekly":
-            points = []
-            week_start = start_date
-            while week_start <= for_date:
-                week_end = min(week_start + timedelta(days=6), for_date)
-                bucket_days = (week_end - week_start).days + 1
-                rows = await db.execute_fetchall(
-                    f"""SELECT category, SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as total_minutes
-                    FROM activity_records
-                    WHERE {non_decay_filter}
-                      AND date >= ? AND date <= ?
-                    GROUP BY category""",
-                    (week_start.isoformat(), week_end.isoformat()),
-                )
-                cat_data = {}
-                for row in rows:
-                    cat = _map_category(row[0])
-                    cat_data[cat] = cat_data.get(cat, 0) + float(row[1])
-
-                daily_baselines, decay_sources, baseline_cats, activity_cats = (
-                    _resolve_chart_meta_for_date(sources_meta, first_dates, week_end.isoformat())
-                )
-                scores = _normalize_to_scores(cat_data, daily_baselines, bucket_days)
-                await _add_decay_scores(scores, decay_sources, week_end)
-                h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
-                points.append(_make_chart_point(
-                    f"{week_start.month}/{week_start.day}", scores, h, c, hs, cs
-                ))
-                week_start += timedelta(days=7)
-            return points
-
-        else:  # monthly
-            points = []
-            current_month = start_date.replace(day=1)
-            while current_month <= for_date:
-                next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
-                month_end = next_month - timedelta(days=1)
-                end = min(month_end, for_date)
-                bucket_days = (end - current_month).days + 1
-                rows = await db.execute_fetchall(
-                    f"""SELECT category, SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as total_minutes
-                    FROM activity_records
-                    WHERE {non_decay_filter}
-                      AND date >= ? AND date <= ?
-                    GROUP BY category""",
-                    (current_month.isoformat(), end.isoformat()),
-                )
-                cat_data = {}
-                for row in rows:
-                    cat = _map_category(row[0])
-                    cat_data[cat] = cat_data.get(cat, 0) + float(row[1])
-
-                daily_baselines, decay_sources, baseline_cats, activity_cats = (
-                    _resolve_chart_meta_for_date(sources_meta, first_dates, end.isoformat())
-                )
-                scores = _normalize_to_scores(cat_data, daily_baselines, bucket_days)
-                await _add_decay_scores(scores, decay_sources, end)
-                h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
-                points.append(_make_chart_point(
-                    f"{current_month.month}月", scores, h, c, hs, cs
-                ))
-                current_month = next_month
-            return points
+    else:  # monthly
+        points = []
+        current_month = start_date.replace(day=1)
+        while current_month <= for_date:
+            next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
+            month_end = next_month - timedelta(days=1)
+            end = min(month_end, for_date)
+            meta_eligible, decay_sources, baseline_cats, activity_cats = (
+                _resolve_chart_meta_for_date(sources_meta, first_dates, end.isoformat())
+            )
+            scores = await _compute_bucket_category_scores(
+                meta_eligible, decay_sources, current_month, end
+            )
+            h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
+            points.append(_make_chart_point(
+                f"{current_month.month}月", scores, h, c, hs, cs
+            ))
+            current_month = next_month
+        return points
 
 
 def _map_category(category: str) -> str:

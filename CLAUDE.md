@@ -43,8 +43,10 @@
 - 各指標に「基準値」を設定し、基準値に対するパーセンテージでスコア化（100点 = 基準、上限なし）
 - **指数減衰（decay_half_life）**: イベント型ソースのスパイクを平滑化（窓切断方式の代替）
 - 指標分類: `baseline`（ゼロが異常）、`event`（ゼロでも正常）、`health_only`（健康スコアのみ参加）
-- **健康指標**: baseline分類ソースの平均 → NORMAL/CAUTION/CRITICAL
-- **文化的指標**: display_type=activity/card_only ソースの合計 → RICH/MODERATE/LOW
+- **集約方式**: ソース別スコア → カテゴリ内平均（カテゴリ=指標）→ 健康/文化スコア
+  - 1指標に複数ソースがある場合（例: vitality = nextdns + stash）、ソースを増やしても重みは1カテゴリのまま
+- **健康指標**: baseline分類カテゴリの平均 → NORMAL/CAUTION/CRITICAL
+- **文化的指標**: display_type=activity/card_only カテゴリの平均 → RICH/MODERATE/LOW
 - 総合スコアを1つにまとめない。2軸で独立して表示
 
 ## グラフ表示
