@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     stash_api_url: str = "http://localhost:9999"
     stash_api_key: str = ""
 
+    # Steam Web API
+    steam_api_key: str = ""
+    steam_id64: str = ""
+
     # Notification - LINE Messaging API
     line_channel_access_token: str = ""
     line_channel_secret: str = ""

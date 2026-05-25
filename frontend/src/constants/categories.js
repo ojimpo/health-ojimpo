@@ -12,6 +12,7 @@ export const activityCategories = [
   { key: 'cd', label: 'CD貸出', color: '#FF79C6' },         // pink
   { key: 'podcast', label: 'Podcast', color: '#1DB954' },  // Spotify green
   { key: 'coding', label: 'コード', color: '#D4A574' },     // Claude Code brown
+  { key: 'game', label: 'ゲーム', color: '#66C0F4' },        // Steam blue
 ]
 
 export const stateCategories = [

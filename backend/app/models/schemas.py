@@ -29,6 +29,7 @@ class ChartDataPoint(BaseModel):
     outing_activity: float = 0
     cd: float = 0
     podcast: float = 0
+    game: float = 0
     sleep: float | None = None
     readiness: float | None = None
     stress: float | None = None
