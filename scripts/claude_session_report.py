@@ -12,7 +12,8 @@ hostname と一緒にPOSTする。
   CLAUDE_PROJECTS_DIR   ~/.claude/projects 以外を使う場合（任意）
 
 5分以上イベント間隔が空いたら離席とみなす（IDLE_THRESHOLD_SECONDS）。
-冪等性: 当日の累積分数を毎回送る。サーバー側はMAXで更新するので何度呼ばれてもOK。
+冪等性: 直近48h以内のJSONLから日次分数を計算し、見つかった全日付を送る。
+サーバー側はMAXで更新するので、Auto modeで日付をまたいでも前日分が失われない。
 """
 
 from __future__ import annotations
@@ -113,12 +114,12 @@ def main() -> int:
     host = os.environ.get("HEALTH_HOST_NAME") or socket.gethostname()
 
     daily = compute_daily_minutes(claude_dir)
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    minutes_today = daily.get(today, 0.0)
-    if minutes_today <= 0:
+    if not daily:
         return 0
-    post_minutes(url, secret, today, minutes_today, host)
+    for date_str, minutes in sorted(daily.items()):
+        if minutes <= 0:
+            continue
+        post_minutes(url, secret, date_str, minutes, host)
     return 0
 
 
