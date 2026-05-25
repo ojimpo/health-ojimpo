@@ -60,7 +60,6 @@ def build_notification_message(
                 f"健康スコアと文化的活動の両方が大きく低下しています",
                 f"健康: {health_status} ({health_score:.0f}) / 文化: {cultural_status} ({cultural_score:.0f})",
                 f"生存確認してあげてください",
-                f"https://health.ojimpo.com",
             ]
         else:
             lines = [
@@ -68,7 +67,6 @@ def build_notification_message(
                 f"健康スコアと文化的活動の両方が低下しています",
                 f"健康: {health_status} ({health_score:.0f}) / 文化: {cultural_status} ({cultural_score:.0f})",
                 f"声をかけてあげてください",
-                f"https://health.ojimpo.com",
             ]
         if is_critical and personal_line:
             lines.append(f"\nLINE: {personal_line}")
@@ -80,7 +78,6 @@ def build_notification_message(
                 f"\u26a0\ufe0f [health.ojimpo.com]",
                 f"健康スコアが大きく低下しています ({health_status}: {health_score:.0f})",
                 f"連絡を取ってみてください",
-                f"https://health.ojimpo.com",
             ]
             if personal_line:
                 lines.append(f"\nLINE: {personal_line}")
@@ -89,7 +86,6 @@ def build_notification_message(
                 f"[health.ojimpo.com]",
                 f"健康スコアが低下しています ({health_status}: {health_score:.0f})",
                 f"少し気にかけてあげてください",
-                f"https://health.ojimpo.com",
             ]
         return "\n".join(lines)
 
@@ -98,7 +94,6 @@ def build_notification_message(
         f"[health.ojimpo.com]",
         f"文化的活動が減少しています ({cultural_status}: {cultural_score:.0f})",
         f"忙しいのかもしれません — 息抜きに誘ってあげてください",
-        f"https://health.ojimpo.com",
     ]
     return "\n".join(lines)
 
