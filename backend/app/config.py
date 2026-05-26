@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     # NextDNS
     nextdns_api_key: str = ""
     nextdns_profile_id: str = ""
+    # 外出推定で「自宅Wi-Fi」と判定する都市名（NextDNSのgeo.city一致、カンマ区切りで複数可）。
+    # cellular=false かつこのリストに含まれる都市の IP のみ「自宅クエリ」扱い。
+    outing_home_cities: str = ""
 
     # Stash (local media manager)
     stash_api_url: str = "http://localhost:9999"

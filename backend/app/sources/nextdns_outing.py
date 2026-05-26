@@ -1,7 +1,10 @@
-"""NextDNS Outing Estimation — cellular query ratio as outing proxy.
+"""NextDNS Outing Estimation — non-home network ratio as outing proxy.
 
-Uses iPhone's cellular vs total DNS queries to estimate daily outing level.
-Home = Wi-Fi (cellular=0), Out = mobile network (cellular > 0).
+Uses iPhone's DNS query origin to estimate daily outing level.
+Home judgment: network.cellular=false AND geo.city IN OUTING_HOME_CITIES.
+Everything else (cellular, office Wi-Fi, café Wi-Fi, hotels) counts as outing.
+This handles the case where the user is connected to office Wi-Fi all day —
+cellular alone would underestimate outing for typical commuters.
 """
 
 import logging
@@ -49,6 +52,7 @@ class NextDNSOutingAdapter(SourceAdapter):
         start = date.fromisoformat(from_date)
         end = date.today()
 
+        home_cities = self._home_cities()
         all_records = []
         async with httpx.AsyncClient(timeout=30) as client:
             current = start
@@ -56,26 +60,31 @@ class NextDNSOutingAdapter(SourceAdapter):
                 day_str = current.isoformat()
                 next_day = (current + timedelta(days=1)).isoformat()
 
-                cellular, total = await self._fetch_day(
-                    client, headers, profile, device_id, day_str, next_day
+                cellular, outing, home, total = await self._fetch_day(
+                    client, headers, profile, device_id, day_str, next_day, home_cities
                 )
                 if total > 0:
-                    all_records.append((day_str, cellular, total))
+                    all_records.append((day_str, cellular, outing, home, total))
                 current += timedelta(days=1)
 
         stored = 0
         async with get_db_context() as db:
-            for day, cellular, total in all_records:
+            for day, cellular, outing, home, total in all_records:
                 await db.execute(
                     """INSERT OR REPLACE INTO nextdns_outing
-                    (date, cellular_queries, total_queries) VALUES (?, ?, ?)""",
-                    (day, cellular, total),
+                    (date, cellular_queries, outing_queries, home_queries, total_queries)
+                    VALUES (?, ?, ?, ?, ?)""",
+                    (day, cellular, outing, home, total),
                 )
                 stored += 1
             await db.commit()
 
         logger.info("NextDNS outing: stored %d records", stored)
         return len(all_records), stored
+
+    def _home_cities(self) -> set[str]:
+        raw = settings.outing_home_cities or ""
+        return {c.strip() for c in raw.split(",") if c.strip()}
 
     async def _find_device_id(self, headers: dict, profile: str) -> str | None:
         """Find the device ID for the mobile device."""
@@ -96,9 +105,15 @@ class NextDNSOutingAdapter(SourceAdapter):
 
     async def _fetch_day(
         self, client: httpx.AsyncClient, headers: dict, profile: str,
-        device_id: str, day: str, next_day: str,
-    ) -> tuple[int, int]:
-        """Fetch cellular and total query counts for a single day."""
+        device_id: str, day: str, next_day: str, home_cities: set[str],
+    ) -> tuple[int, int, int, int]:
+        """Fetch query counts for a single day.
+
+        Returns (cellular, outing, home, total).
+        - cellular: queries from cellular networks (legacy metric).
+        - home: queries from non-cellular IPs whose geo.city is in home_cities.
+        - outing: all other queries (cellular + non-home Wi-Fi).
+        """
         try:
             resp = await client.get(
                 f"{NEXTDNS_API_BASE}/profiles/{profile}/analytics/ips",
@@ -114,17 +129,27 @@ class NextDNSOutingAdapter(SourceAdapter):
             data = resp.json()
         except Exception:
             logger.exception("Failed to fetch NextDNS IPs for %s", day)
-            return 0, 0
+            return 0, 0, 0, 0
 
         cellular = 0
+        outing = 0
+        home = 0
         total = 0
         for entry in data.get("data", []):
             queries = entry.get("queries", 0)
             total += queries
-            if entry.get("network", {}).get("cellular"):
+            network = entry.get("network", {}) or {}
+            is_cellular = bool(network.get("cellular"))
+            if is_cellular:
                 cellular += queries
+            city = (entry.get("geo", {}) or {}).get("city", "")
+            is_home = (not is_cellular) and (city in home_cities) if home_cities else False
+            if is_home:
+                home += queries
+            else:
+                outing += queries
 
-        return cellular, total
+        return cellular, outing, home, total
 
     async def aggregate(self) -> None:
         async with get_db_context() as db:
@@ -138,14 +163,19 @@ class NextDNSOutingAdapter(SourceAdapter):
                     'outing',
                     0,
                     CASE WHEN total_queries > 0
-                        THEN ROUND(CAST(cellular_queries AS REAL) / total_queries * 100, 1)
+                        THEN ROUND(CAST(outing_queries AS REAL) / total_queries * 100, 1)
                         ELSE 0
                     END,
                     '%',
-                    json_object('cellular', cellular_queries, 'total', total_queries)
+                    json_object(
+                        'cellular', cellular_queries,
+                        'outing', outing_queries,
+                        'home', home_queries,
+                        'total', total_queries
+                    )
                 FROM nextdns_outing"""
             )
-            # Activity: cellular query count for ACTIVITY stacked chart
+            # Activity: outing query count for ACTIVITY stacked chart
             await db.execute(
                 """INSERT OR REPLACE INTO activity_records
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
@@ -154,11 +184,11 @@ class NextDNSOutingAdapter(SourceAdapter):
                     'nextdns_outing_activity',
                     'outing_activity',
                     0,
-                    cellular_queries,
+                    outing_queries,
                     'queries',
                     NULL
                 FROM nextdns_outing
-                WHERE cellular_queries > 0"""
+                WHERE outing_queries > 0"""
             )
             await db.commit()
         logger.info("NextDNS outing aggregation completed")
@@ -168,7 +198,8 @@ class NextDNSOutingAdapter(SourceAdapter):
     ) -> list[dict]:
         async with get_db_context() as db:
             rows = await db.execute_fetchall(
-                """SELECT date, cellular_queries, total_queries FROM nextdns_outing
+                """SELECT date, cellular_queries, outing_queries, home_queries, total_queries
+                FROM nextdns_outing
                 ORDER BY date DESC LIMIT ?""",
                 (limit,),
             )
@@ -179,14 +210,17 @@ class NextDNSOutingAdapter(SourceAdapter):
                 d = date.fromisoformat(row[0])
                 time_str = format_relative_day(d, today)
 
-                cellular, total = row[1], row[2]
-                pct = round(cellular / total * 100) if total > 0 else 0
+                cellular, outing, home, total = row[1], row[2], row[3], row[4]
+                pct = round(outing / total * 100) if total > 0 else 0
 
                 activities.append({
                     "time": time_str,
                     "icon": "🚶",
                     "text": f"外出 {pct}%",
-                    "detail": f"cellular: {cellular}/{total}" if include_detail else None,
+                    "detail": (
+                        f"outing: {outing}/{total} (cellular: {cellular}, home: {home})"
+                        if include_detail else None
+                    ),
                     "color": "#66BB6A",
                     "sort_date": row[0],
                 })
