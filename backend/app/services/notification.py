@@ -9,6 +9,14 @@ from .scoring import calculate_scores
 
 logger = logging.getLogger(__name__)
 
+# CAUTION / LOW の発火に要求する直近連続観測回数。
+# CRITICAL は緊急度を優先して 1 回観測で発火させる。
+# ingest が毎時走るので 3 = 直近3時間連続で悪化が続いた場合に通知。
+PERSISTENCE_REQUIRED = 3
+
+HEALTH_ORDER = {"NORMAL": 0, "CAUTION": 1, "CRITICAL": 2}
+CULTURAL_ORDER = {"RICH": 0, "MODERATE": 1, "LOW": 2}
+
 
 def _detect_transitions(
     prev_health: str,
@@ -22,20 +30,76 @@ def _detect_transitions(
     Cultural: only transitions to LOW (RICH→LOW, MODERATE→LOW). RICH→MODERATE is silent.
     """
     transitions = []
-    health_order = {"NORMAL": 0, "CAUTION": 1, "CRITICAL": 2}
-    cultural_order = {"RICH": 0, "MODERATE": 1, "LOW": 2}
-
     curr_h = curr_health.value
     curr_c = curr_cultural.value
 
-    if health_order.get(curr_h, 0) > health_order.get(prev_health, 0):
+    if HEALTH_ORDER.get(curr_h, 0) > HEALTH_ORDER.get(prev_health, 0):
         transitions.append(f"health:{prev_health}->{curr_h}")
 
     # Cultural: only notify when entering LOW
-    if curr_c == "LOW" and cultural_order.get(prev_cultural, 0) < cultural_order.get("LOW", 2):
+    if curr_c == "LOW" and CULTURAL_ORDER.get(prev_cultural, 0) < CULTURAL_ORDER.get("LOW", 2):
         transitions.append(f"cultural:{prev_cultural}->{curr_c}")
 
     return transitions
+
+
+async def _filter_persistent_transitions(transitions: list[str]) -> list[str]:
+    """Apply persistence guard to avoid notifying on transient dips.
+
+    For each detected transition:
+    - CRITICAL: fire immediately (urgency outweighs false-positive cost).
+    - CAUTION / LOW: require the last PERSISTENCE_REQUIRED status_history rows
+      (including the current observation) to all be at the same severity or worse.
+
+    The current observation is expected to already be inserted into status_history
+    before this function is called.
+    """
+    if not transitions:
+        return []
+
+    async with get_db_context() as db:
+        rows = await db.execute_fetchall(
+            """SELECT health_status, cultural_status
+            FROM status_history
+            ORDER BY id DESC
+            LIMIT ?""",
+            (PERSISTENCE_REQUIRED,),
+        )
+
+    recent_health = [r[0] for r in rows]
+    recent_cultural = [r[1] for r in rows]
+
+    confirmed = []
+    for t in transitions:
+        kind, _, target = t.partition(":")
+        _, _, target_status = target.partition("->")
+
+        if kind == "health":
+            if target_status == "CRITICAL":
+                confirmed.append(t)
+                continue
+            if len(recent_health) >= PERSISTENCE_REQUIRED and all(
+                HEALTH_ORDER.get(s, 0) >= HEALTH_ORDER[target_status] for s in recent_health
+            ):
+                confirmed.append(t)
+            else:
+                logger.info(
+                    "Persistence guard skipped transition %s (recent=%s)",
+                    t, recent_health,
+                )
+        elif kind == "cultural":
+            # Cultural は LOW のみが対象。LOW は CRITICAL ほど緊急ではないので持続性を要求する。
+            if len(recent_cultural) >= PERSISTENCE_REQUIRED and all(
+                CULTURAL_ORDER.get(s, 0) >= CULTURAL_ORDER[target_status] for s in recent_cultural
+            ):
+                confirmed.append(t)
+            else:
+                logger.info(
+                    "Persistence guard skipped transition %s (recent=%s)",
+                    t, recent_cultural,
+                )
+
+    return confirmed
 
 
 def build_notification_message(
@@ -185,11 +249,23 @@ async def check_and_notify() -> None:
             VALUES (1, ?, ?, ?, ?, datetime('now'))""",
             (curr_health.value, curr_cultural.value, health_score, cultural_score),
         )
+        # 持続性ガード用に観測履歴を残す（毎回 INSERT）
+        await db.execute(
+            """INSERT INTO status_history
+            (health_status, cultural_status, health_score, cultural_score)
+            VALUES (?, ?, ?, ?)""",
+            (curr_health.value, curr_cultural.value, health_score, cultural_score),
+        )
         await db.commit()
 
     transitions = _detect_transitions(prev_health, prev_cultural, curr_health, curr_cultural)
     if not transitions:
         logger.info("No status transitions detected, skipping notification")
+        return
+
+    transitions = await _filter_persistent_transitions(transitions)
+    if not transitions:
+        logger.info("All transitions filtered out by persistence guard")
         return
 
     # Cooldown: skip if last notification was within 1 hour
