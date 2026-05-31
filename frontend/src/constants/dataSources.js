@@ -18,4 +18,5 @@ export const dataSources = [
   { id: 'openai', name: 'OpenAI', category: 'コーディング', icon: '🧠', phase: 'phase3', color: '#74AA9C' },
   { id: 'bathmat', name: '体重 (Smart Bath Mat)', category: '体重', icon: '⚖️', phase: 'phase3', color: '#F8F8F2' },
   { id: 'spotify_pod', name: 'Podcasts (Spotify)', category: '音楽', icon: '🎧', phase: 'phase3', color: '#1DB954' },
+  { id: 'spotify_saved', name: '好きな曲 (Spotify)', category: 'Like', icon: '❤️', phase: 'phase3', color: '#E0245E' },
 ]

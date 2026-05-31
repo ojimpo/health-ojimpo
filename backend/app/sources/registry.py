@@ -25,6 +25,7 @@ def register_adapters():
     from .stash_vitality import StashVitalityAdapter
     from .nextdns_outing import NextDNSOutingAdapter
     from .spotify_podcast import SpotifyPodcastAdapter
+    from .spotify_saved_tracks import SpotifySavedTracksAdapter
     from .steam import SteamAdapter
 
     adapters = [
@@ -46,6 +47,7 @@ def register_adapters():
         StashVitalityAdapter(),
         NextDNSOutingAdapter(),
         SpotifyPodcastAdapter(),
+        SpotifySavedTracksAdapter(),
         SteamAdapter(),
     ]
     for adapter in adapters:

@@ -13,6 +13,7 @@ export const activityCategories = [
   { key: 'podcast', label: 'Podcast', color: '#1DB954' },  // Spotify green
   { key: 'coding', label: 'コード', color: '#D4A574' },     // Claude Code brown
   { key: 'game', label: 'ゲーム', color: '#66C0F4' },        // Steam blue
+  { key: 'like', label: 'Like', color: '#E0245E' },         // Spotify Saved Tracks (like red)
 ]
 
 export const stateCategories = [
