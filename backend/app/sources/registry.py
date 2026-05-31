@@ -27,6 +27,7 @@ def register_adapters():
     from .spotify_podcast import SpotifyPodcastAdapter
     from .spotify_saved_tracks import SpotifySavedTracksAdapter
     from .steam import SteamAdapter
+    from .duolingo import DuolingoAdapter
 
     adapters = [
         LastfmAdapter(),
@@ -38,6 +39,7 @@ def register_adapters():
         GoogleCalendarAdapter("gcal_live"),
         SyncGatewayAdapter("filmarks", "filmarks", "映画 (Filmarks)", "movie", "🎬", "#FF9500", "本", "映画を視聴 "),
         SyncGatewayAdapter("bookmeter", "bookmeter", "読書メーター", "reading", "📖", "#ADFF2F", "冊", "本を読了 "),
+        SyncGatewayAdapter("studyplus", "studyplus", "勉強 (Studyplus)", "study", "📚", "#5C6BC0", "分", "勉強 ", value_field="minutes"),
         ClaudeLocalAdapter(),
         GitHubAdapter(),
         OpenAIUsageAdapter(),
@@ -49,6 +51,7 @@ def register_adapters():
         SpotifyPodcastAdapter(),
         SpotifySavedTracksAdapter(),
         SteamAdapter(),
+        DuolingoAdapter(),
     ]
     for adapter in adapters:
         SOURCE_ADAPTERS[adapter.source_id] = adapter

@@ -23,6 +23,7 @@ class SyncGatewayAdapter(SourceAdapter):
         color: str,
         raw_unit: str,
         activity_text: str,
+        value_field: str | None = None,
     ):
         self.source_slug = source_slug
         self.source_id = source_id
@@ -32,6 +33,10 @@ class SyncGatewayAdapter(SourceAdapter):
         self._color = color
         self._raw_unit = raw_unit
         self._activity_text = activity_text
+        # When set, sum this numeric field (from payload or top-level) per day
+        # instead of counting records. e.g. studyplus emits one record/day with
+        # payload.minutes, and we want the daily total minutes — not "1".
+        self._value_field = value_field
 
     async def is_configured(self) -> bool:
         return bool(settings.sync_gateway_base_url)
@@ -64,8 +69,9 @@ class SyncGatewayAdapter(SourceAdapter):
             logger.exception("Failed to fetch from sync-gateway for %s", self.source_slug)
             return 0, 0
 
-        # Group by event_date
-        daily_counts: dict[str, int] = {}
+        # Group by event_date. Default: count records (1 book = 1, 1 movie = 1).
+        # value_field mode: sum a numeric field (e.g. studyplus minutes per day).
+        daily_values: dict[str, float] = {}
         for rec in records:
             event_date = rec.get("event_date")
             if not event_date:
@@ -73,16 +79,26 @@ class SyncGatewayAdapter(SourceAdapter):
             d = event_date[:10]  # YYYY-MM-DD
             if from_date and d < from_date:
                 continue
-            daily_counts[d] = daily_counts.get(d, 0) + 1
+            if self._value_field:
+                payload = rec.get("payload") or {}
+                raw = payload.get(self._value_field, rec.get(self._value_field, 0))
+                try:
+                    daily_values[d] = daily_values.get(d, 0.0) + float(raw or 0)
+                except (TypeError, ValueError):
+                    continue
+            else:
+                daily_values[d] = daily_values.get(d, 0.0) + 1
 
         stored = 0
         async with get_db_context() as db:
-            for d, count in daily_counts.items():
+            for d, value in daily_values.items():
+                # For count mode keep integer values; round summed minutes to 1 decimal.
+                v = round(value, 1) if self._value_field else value
                 await db.execute(
                     """INSERT OR REPLACE INTO activity_records
                     (date, source, category, minutes, raw_value, raw_unit, metadata)
                     VALUES (?, ?, ?, ?, ?, ?, NULL)""",
-                    (d, self.source_id, self._category, count, count, self._raw_unit),
+                    (d, self.source_id, self._category, v, v, self._raw_unit),
                 )
                 stored += 1
             await db.commit()
@@ -158,10 +174,18 @@ class SyncGatewayAdapter(SourceAdapter):
             author = rec.get("author", "")
             detail = f"{author}" if include_detail and author else None
 
+            # value_field mode (e.g. studyplus): surface the daily total in the detail.
+            if self._value_field:
+                payload = rec.get("payload") or {}
+                v = payload.get(self._value_field, rec.get(self._value_field))
+                if v is not None:
+                    minutes_label = f"{round(float(v))}{self._raw_unit}"
+                    detail = f"{detail} / {minutes_label}" if detail else minutes_label
+
             activities.append({
                 "time": time_str,
                 "icon": self._icon,
-                "text": title if include_detail else self._activity_text,
+                "text": title if (include_detail and title) else self._activity_text,
                 "detail": detail,
                 "color": self._color,
                 "sort_date": event_date[:10],

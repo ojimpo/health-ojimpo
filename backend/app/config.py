@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     steam_api_key: str = ""
     steam_id64: str = ""
 
+    # Duolingo (unofficial API) — 語学学習。ブラウザの jwt_token Cookie と数値 user_id を設定。
+    duolingo_jwt: str = ""
+    duolingo_user_id: str = ""
+    # 1セッションあたりの推定学習分（totalSessionTime が取得できない場合のフォールバック）
+    duolingo_minutes_per_session: float = 7.0
+
     # Notification - LINE Messaging API
     line_channel_access_token: str = ""
     line_channel_secret: str = ""
