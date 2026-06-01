@@ -44,6 +44,9 @@ services:
       # Steam Web API
       - STEAM_API_KEY=${STEAM_API_KEY:-}
       - STEAM_ID64=${STEAM_ID64:-}
+      # Duolingo (公開プロフィールAPI, 認証不要)
+      - DUOLINGO_USER_ID=${DUOLINGO_USER_ID:-}
+      - DUOLINGO_XP_PER_MINUTE=${DUOLINGO_XP_PER_MINUTE:-3.0}
       # Notification
       - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN:-}
       - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET:-}

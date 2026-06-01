@@ -65,6 +65,7 @@ CATEGORY_LABELS = {
     "fitness": "フィットネス",
     "game": "ゲーム",
     "like": "Like",
+    "study": "勉強",
 }
 
 # Category colors
