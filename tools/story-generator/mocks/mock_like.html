@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { width:520px; height:300px; background:#0e0e18; font-family:'Noto Sans CJK JP','JetBrains Mono',sans-serif; display:flex; align-items:center; justify-content:center; }
+  .card { width:460px; background:#16161e; border:1px solid #3a1f2a; border-radius:24px; padding:30px 34px; position:relative; overflow:hidden; }
+  .card::before { content:''; position:absolute; top:0; left:0; right:0; height:4px; background:linear-gradient(90deg, transparent, #E0245E, transparent); }
+  .top { display:flex; align-items:center; gap:14px; margin-bottom:16px; }
+  .icon { font-size:40px; }
+  .labels .jp { font-size:30px; font-weight:700; color:#e0e0e0; }
+  .labels .en { font-family:'Orbitron',sans-serif; font-size:15px; color:#E0245E; letter-spacing:3px; }
+  .value { font-family:'Orbitron',sans-serif; font-size:60px; font-weight:900; color:#E0245E; line-height:1; text-shadow:0 0 24px rgba(224,36,94,.4); }
+  .badge { display:inline-block; font-size:15px; color:#1DB954; border:1px solid #1DB954; border-radius:20px; padding:3px 12px; margin-left:14px; vertical-align:middle; }
+  .tracks { margin-top:18px; }
+  .tracks .t { display:flex; align-items:center; gap:10px; font-size:17px; color:#bbb; padding:4px 0; }
+  .tracks .t .h { color:#E0245E; font-size:15px; }
+</style></head><body>
+  <div class="card">
+    <div class="top">
+      <div class="icon">❤️</div>
+      <div class="labels"><div class="jp">Like</div><div class="en">SPOTIFY SAVED</div></div>
+    </div>
+    <div><span class="value">196</span><span class="badge">+60 ▲</span></div>
+    <div class="tracks">
+      <div class="t"><span class="h">♥</span> 能動的に "Save" した曲を dig として集計</div>
+      <div class="t"><span class="h">♥</span> 基準 30曲/週 · 730日 backfill (1,902曲)</div>
+    </div>
+  </div>
+</body></html>

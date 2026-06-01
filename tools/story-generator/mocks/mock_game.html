@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { width:560px; height:300px; background:#0e0e18; font-family:'Noto Sans CJK JP','JetBrains Mono',sans-serif; display:flex; align-items:center; justify-content:center; }
+  .panel { width:520px; padding:8px 16px; }
+  .top { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px; }
+  .brand { font-family:'Orbitron',sans-serif; font-size:18px; color:#66C0F4; letter-spacing:4px; }
+  .sub { font-size:15px; color:#777; }
+  .value { font-family:'Orbitron',sans-serif; font-size:78px; font-weight:900; color:#66C0F4; line-height:1; text-shadow:0 0 28px rgba(102,192,244,.45); }
+  .value small { font-size:30px; color:#888; }
+  .bars { display:flex; gap:8px; align-items:flex-end; height:90px; margin-top:18px; }
+  .bars span { flex:1; background:linear-gradient(180deg,#66C0F4,#2a6f9e); border-radius:4px; opacity:.9; }
+</style></head><body>
+  <div class="panel">
+    <div class="top"><div class="brand">STEAM</div><div class="sub">今週のプレイ時間スコア</div></div>
+    <div class="value">60<small>/100</small></div>
+    <div class="bars">
+      <span style="height:30%"></span><span style="height:55%"></span><span style="height:20%"></span>
+      <span style="height:80%"></span><span style="height:45%"></span><span style="height:95%"></span>
+      <span style="height:60%"></span><span style="height:38%"></span><span style="height:70%"></span>
+      <span style="height:25%"></span><span style="height:50%"></span><span style="height:85%"></span>
+    </div>
+  </div>
+</body></html>
