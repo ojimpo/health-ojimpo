@@ -172,20 +172,24 @@ class SyncGatewayAdapter(SourceAdapter):
 
             title = rec.get("title", "")
             author = rec.get("author", "")
-            detail = f"{author}" if include_detail and author else None
 
-            # value_field mode (e.g. studyplus): surface the daily total in the detail.
             if self._value_field:
+                # value_field mode (e.g. studyplus): fold the amount into the text
+                # so it reads as one phrase ("勉強 65分"); keep the material title
+                # as a supplementary detail only in the detailed (admin) view.
                 payload = rec.get("payload") or {}
                 v = payload.get(self._value_field, rec.get(self._value_field))
-                if v is not None:
-                    minutes_label = f"{round(float(v))}{self._raw_unit}"
-                    detail = f"{detail} / {minutes_label}" if detail else minutes_label
+                amount = f"{round(float(v))}{self._raw_unit}" if v is not None else ""
+                text = f"{self._activity_text}{amount}".strip()
+                detail = title if (include_detail and title) else None
+            else:
+                text = title if (include_detail and title) else self._activity_text
+                detail = f"{author}" if include_detail and author else None
 
             activities.append({
                 "time": time_str,
                 "icon": self._icon,
-                "text": title if (include_detail and title) else self._activity_text,
+                "text": text,
                 "detail": detail,
                 "color": self._color,
                 "sort_date": event_date[:10],
