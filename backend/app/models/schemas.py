@@ -31,6 +31,7 @@ class ChartDataPoint(BaseModel):
     podcast: float = 0
     game: float = 0
     like: float = 0
+    study: float = 0
     sleep: float | None = None
     readiness: float | None = None
     stress: float | None = None
