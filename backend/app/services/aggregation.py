@@ -104,6 +104,9 @@ _STATE_DAILY_BASELINES = {
     "sleep": 80.0,
     "readiness": 80.0,
     "stress": 30.0,
+    # outing's base_value(60) is a daily % baseline, not a 7-day total.
+    # Without this, the chart divides it by aggregation_period and inflates ~7x.
+    "outing": 60.0,
 }
 
 
