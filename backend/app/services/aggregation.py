@@ -107,6 +107,10 @@ _STATE_DAILY_BASELINES = {
     # outing's base_value(60) is a daily % baseline, not a 7-day total.
     # Without this, the chart divides it by aggregation_period and inflates ~7x.
     "outing": 60.0,
+    # CTL is a daily fitness *level* (stock), not an N-day total (flow). base 50
+    # is the reference CTL = 100 on the chart. Without this it gets divided by
+    # aggregation_period(30) and inflates ~30x (CTL 22 → score ~1325).
+    "ctl": 50.0,
 }
 
 

@@ -53,7 +53,7 @@ function getTickInterval(dataLength) {
 }
 
 export default function ConditionChart({ data, height = 200, saturation }) {
-  const hasData = data?.some(d => d.sleep != null || d.readiness != null || d.stress != null || d.weight != null)
+  const hasData = data?.some(d => d.sleep != null || d.readiness != null || d.stress != null || d.weight != null || d.outing != null || d.ctl != null)
 
   return (
     <>
