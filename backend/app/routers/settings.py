@@ -1,4 +1,5 @@
 import secrets
+from datetime import date
 
 from fastapi import APIRouter, HTTPException
 
@@ -57,11 +58,33 @@ async def update_source(source_id: str, update: SourceSettingsUpdate):
         updates = {k: v for k, v in update.model_dump().items() if v is not None}
         if not updates:
             raise HTTPException(status_code=400, detail="No fields to update")
+        current = dict(row[0])
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         values = list(updates.values()) + [source_id]
         await db.execute(
             f"UPDATE source_settings SET {set_clause} WHERE id = ?", values
         )
+        # 基準値が変わったら baseline_history に必ず記録する（変更履歴を残す）。
+        # effective_from は当日。同日に複数回変えた場合は1行に上書きする。
+        if "base_value" in updates and updates["base_value"] != current["base_value"]:
+            new_base = updates["base_value"]
+            new_unit = updates.get("base_unit", current["base_unit"])
+            effective_from = date.today().isoformat()
+            memo = f"設定画面から変更: {current['base_value']} → {new_base}"
+            existing = await db.execute_fetchall(
+                "SELECT id FROM baseline_history WHERE source_id = ? AND effective_from = ?",
+                (source_id, effective_from),
+            )
+            if existing:
+                await db.execute(
+                    "UPDATE baseline_history SET base_value = ?, base_unit = ?, memo = ? WHERE id = ?",
+                    (new_base, new_unit, memo, existing[0][0]),
+                )
+            else:
+                await db.execute(
+                    "INSERT INTO baseline_history (source_id, effective_from, base_value, base_unit, memo) VALUES (?, ?, ?, ?, ?)",
+                    (source_id, effective_from, new_base, new_unit, memo),
+                )
         await db.commit()
         # Re-fetch
         rows = await db.execute_fetchall(
