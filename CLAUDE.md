@@ -58,11 +58,18 @@
 - 粒度: 1M=日次、3M=日次、1Y=週次
 - Y軸: tickを手動制御（中央値ベース）、dataMaxでスパイクも表示
 
+## テスト
+
+- Backend: `cd backend && python3 -m pytest`（**必ず backend/ から実行**。ルートからだと asyncio_mode 設定が効かず全asyncテストが失敗する）
+- Frontend: `cd frontend && npm test`（vitest）
+- スコアロジック（scoring.py / aggregation.py）を変更したら必ず pytest を回すこと
+- チャートのカテゴリ定義は `backend/app/models/schemas.py` の `ACTIVITY_CATEGORIES` / `STATE_CATEGORIES` が唯一の定義箇所（ChartDataPoint はここから動的生成）
+
 ## マイグレーション
 
 - `backend/app/migrations/` に連番SQLファイル
 - init_db: duplicate column/already exists エラーを自動スキップ（冪等化）
-- 最新: 029
+- 最新: 037
 - **コード変更はリビルドが必要**: `docker compose build backend && docker compose up -d backend`
 
 ## デプロイ
