@@ -20,6 +20,7 @@ from ..sources.registry import SOURCE_ADAPTERS
 from .scoring import (
     calculate_scores,
     calculate_source_score,
+    decay_score,
     get_source_first_dates,
     get_thresholds,
 )
@@ -112,18 +113,17 @@ _STATE_DAILY_BASELINES = {
 }
 
 
-async def _fetch_chart_source_meta() -> list[tuple]:
+async def _fetch_chart_source_meta(db) -> list[tuple]:
     """Fetch all active source metadata used for chart aggregation.
 
     Returns list of (id, category, base_value, period, coeff,
     half_life, score_method, classification, display_type).
     """
-    async with get_db_context() as db:
-        rows = await db.execute_fetchall(
-            """SELECT id, category, base_value, aggregation_period, spontaneity_coefficient,
-                      decay_half_life, score_method, classification, display_type
-            FROM source_settings WHERE status = 'active'"""
-        )
+    rows = await db.execute_fetchall(
+        """SELECT id, category, base_value, aggregation_period, spontaneity_coefficient,
+                  decay_half_life, score_method, classification, display_type
+        FROM source_settings WHERE status = 'active'"""
+    )
     return [
         (
             r[0], r[1], float(r[2]), int(r[3]), float(r[4]),
@@ -217,9 +217,98 @@ def _compute_point_status(
     )
 
 
+def _make_decay_scorer(
+    period: int,
+    half_life: float,
+    coeff: float,
+    default_base: float,
+    records: list[tuple[str, float]],
+    baselines: list[tuple[str, float]],
+    today: date,
+):
+    """Build a bucket_end -> score function for one decay source.
+
+    Replicates calculate_source_score's decay path (yesterday-window +
+    today bonus, effective baseline per date) against prefetched data,
+    so charts don't need per-bucket DB queries.
+
+    records: (iso_date, daily raw_value sum), ascending by date.
+    baselines: baseline_history (effective_from, base_value), ascending.
+    """
+    lookback = int(half_life * 5)
+
+    def score_at(bucket_end: date) -> float:
+        is_today = bucket_end == today
+        window_end = bucket_end - timedelta(days=1) if is_today else bucket_end
+        window_end_str = window_end.isoformat()
+
+        base_value = default_base
+        for effective_from, value in baselines:
+            if effective_from <= window_end_str:
+                base_value = value
+            else:
+                break
+        if base_value <= 0:
+            return 0.0
+
+        start_str = (window_end - timedelta(days=lookback)).isoformat()
+        daily = [(d, v) for d, v in records if start_str <= d <= window_end_str]
+        if is_today:
+            today_str = bucket_end.isoformat()
+            daily += [(d, v) for d, v in records if d == today_str]
+        return decay_score(daily, bucket_end, base_value, period, half_life, coeff)
+
+    return score_at
+
+
+async def _build_decay_scorers(
+    db, sources: list[tuple], range_start: date, for_date: date
+) -> dict[str, object]:
+    """Prefetch records + baseline history for all chart decay sources and
+    return {source_id: score_at(bucket_end)} callables."""
+    decay_srcs = [
+        s for s in sources
+        if s[5] is not None and s[6] != "daily_avg" and s[8] != "card_only"
+    ]
+    if not decay_srcs:
+        return {}
+
+    ids = [s[0] for s in decay_srcs]
+    placeholders = ",".join(["?"] * len(ids))
+    max_lookback = max(int(s[5] * 5) for s in decay_srcs)
+    fetch_start = (range_start - timedelta(days=max_lookback + 1)).isoformat()
+
+    rows = await db.execute_fetchall(
+        f"""SELECT source, date, SUM(raw_value) FROM activity_records
+        WHERE source IN ({placeholders}) AND date >= ? AND date <= ?
+        GROUP BY source, date ORDER BY date""",
+        (*ids, fetch_start, for_date.isoformat()),
+    )
+    records: dict[str, list[tuple[str, float]]] = {sid: [] for sid in ids}
+    for sid, d, val in rows:
+        records[sid].append((d, float(val)))
+
+    rows = await db.execute_fetchall(
+        f"""SELECT source_id, effective_from, base_value FROM baseline_history
+        WHERE source_id IN ({placeholders}) ORDER BY effective_from""",
+        tuple(ids),
+    )
+    baselines: dict[str, list[tuple[str, float]]] = {sid: [] for sid in ids}
+    for sid, effective_from, value in rows:
+        baselines[sid].append((effective_from, float(value)))
+
+    today = date.today()
+    return {
+        s[0]: _make_decay_scorer(s[3], s[5], s[4], s[2], records[s[0]], baselines[s[0]], today)
+        for s in decay_srcs
+    }
+
+
 async def _compute_bucket_category_scores(
+    db,
     source_meta_eligible: dict[str, tuple],
     decay_sources: list[tuple[str, str]],
+    decay_scorers: dict[str, object],
     bucket_start: date,
     bucket_end: date,
 ) -> dict[str, float]:
@@ -227,8 +316,8 @@ async def _compute_bucket_category_scores(
 
     For non-decay sources: (source, activity_records.category) raw totals are
     each normalized to baseline (100 = met) then averaged within each chart
-    category. For decay sources: calculate_source_score runs per source and
-    is averaged within each chart category.
+    category. For decay sources: the prefetched decay scorer runs per source
+    at bucket_end and is averaged within each chart category.
 
     State categories (sleep/readiness/stress) use fixed daily baselines
     (_STATE_DAILY_BASELINES) regardless of source_settings, since Oura
@@ -241,15 +330,14 @@ async def _compute_bucket_category_scores(
     if source_meta_eligible:
         ids = list(source_meta_eligible.keys())
         placeholders = ",".join(["?"] * len(ids))
-        async with get_db_context() as db:
-            rows = await db.execute_fetchall(
-                f"""SELECT source, category,
-                          SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as total
-                FROM activity_records
-                WHERE source IN ({placeholders}) AND date >= ? AND date <= ?
-                GROUP BY source, category""",
-                tuple(ids) + (bucket_start.isoformat(), bucket_end.isoformat()),
-            )
+        rows = await db.execute_fetchall(
+            f"""SELECT source, category,
+                      SUM(CASE WHEN minutes > 0 THEN minutes ELSE raw_value END) as total
+            FROM activity_records
+            WHERE source IN ({placeholders}) AND date >= ? AND date <= ?
+            GROUP BY source, category""",
+            tuple(ids) + (bucket_start.isoformat(), bucket_end.isoformat()),
+        )
 
         for source_id, raw_cat, raw_total in rows:
             cat = _map_category(raw_cat)
@@ -270,7 +358,7 @@ async def _compute_bucket_category_scores(
 
     # Decay: per-source score at bucket end, averaged within category
     for source_id, cat in decay_sources:
-        score, _, _ = await calculate_source_score(source_id, bucket_end)
+        score = decay_scorers[source_id](bucket_end)
         cat_source_scores.setdefault(cat, []).append(score)
 
     return {c: sum(v) / len(v) for c, v in cat_source_scores.items()}
@@ -309,20 +397,23 @@ async def _get_chart_data(
     if for_date is None:
         for_date = date.today()
 
-    sources_meta = await _fetch_chart_source_meta()
     first_dates = await get_source_first_dates()
     thresholds = await get_thresholds()
+    buckets = _chart_buckets(time_range, for_date)
 
     points = []
-    for bucket_start, bucket_end, label in _chart_buckets(time_range, for_date):
-        meta_eligible, decay_sources, baseline_cats, activity_cats = (
-            _resolve_chart_meta_for_date(sources_meta, first_dates, bucket_end.isoformat())
-        )
-        scores = await _compute_bucket_category_scores(
-            meta_eligible, decay_sources, bucket_start, bucket_end
-        )
-        h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
-        points.append(_make_chart_point(label, scores, h, c, hs, cs))
+    async with get_db_context() as db:
+        sources_meta = await _fetch_chart_source_meta(db)
+        decay_scorers = await _build_decay_scorers(db, sources_meta, buckets[0][0], for_date)
+        for bucket_start, bucket_end, label in buckets:
+            meta_eligible, decay_sources, baseline_cats, activity_cats = (
+                _resolve_chart_meta_for_date(sources_meta, first_dates, bucket_end.isoformat())
+            )
+            scores = await _compute_bucket_category_scores(
+                db, meta_eligible, decay_sources, decay_scorers, bucket_start, bucket_end
+            )
+            h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
+            points.append(_make_chart_point(label, scores, h, c, hs, cs))
     return points
 
 

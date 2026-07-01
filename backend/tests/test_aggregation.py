@@ -138,6 +138,44 @@ async def test_chart_uses_minutes_when_positive(test_db):
     assert points[-1].music == pytest.approx(100.0)
 
 
+async def test_chart_decay_batch_matches_per_date_scores(test_db):
+    # チャートのバッチdecay計算が calculate_source_score の逐次計算と
+    # 全日付（今日含む）で一致すること
+    today = date.today()
+    await add_source("src", "music", base_value=70, aggregation_period=7,
+                     decay_half_life=7.0, spontaneity_coefficient=0.6)
+    await add_source("ev", "movie", base_value=6, aggregation_period=90,
+                     decay_half_life=30.0, classification="event")
+    for i in range(0, 60, 2):
+        await add_record(days_before(today, i), "src", "music", 5 + (i % 7))
+    for i in range(0, 150, 11):
+        await add_record(days_before(today, i), "ev", "movie", 1)
+
+    points = await _get_chart_data(TimeRange.ONE_MONTH, today)
+    for offset, point in zip(range(30, -1, -1), points):
+        d = today - timedelta(days=offset)
+        expected_music, _, _ = await calculate_source_score("src", d)
+        expected_movie, _, _ = await calculate_source_score("ev", d)
+        assert point.music == pytest.approx(round(expected_music, 1)), d
+        assert point.movie == pytest.approx(round(expected_movie, 1)), d
+
+
+async def test_chart_decay_batch_respects_baseline_history(test_db):
+    from .conftest import add_baseline_history
+
+    await add_source("src", "music", base_value=70, aggregation_period=7,
+                     decay_half_life=7.0)
+    await add_baseline_history("src", days_before(PAST, 10), 140)
+    for i in range(40):
+        await add_record(days_before(PAST, i), "src", "music", 10)
+
+    points = await _get_chart_data(TimeRange.ONE_MONTH, PAST)
+    for offset, point in zip(range(30, -1, -1), points):
+        d = PAST - timedelta(days=offset)
+        expected, _, _ = await calculate_source_score("src", d)
+        assert point.music == pytest.approx(round(expected, 1)), d
+
+
 # --- category cards ---
 
 
