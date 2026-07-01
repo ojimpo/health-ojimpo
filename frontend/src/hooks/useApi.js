@@ -1,18 +1,26 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
-export function useApi(url, options = {}) {
+export function useApi(url) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+  // 初回ロードは loading、2回目以降（レンジ切替等）は refreshing にする
+  const hasLoadedRef = useRef(false)
 
   const fetchData = useCallback(async () => {
     setError(null)
+    if (hasLoadedRef.current) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
     try {
-      const resp = await fetch(url, options)
+      const resp = await fetch(url)
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const json = await resp.json()
       setData(json)
+      hasLoadedRef.current = true
     } catch (err) {
       setError(err.message)
     } finally {
@@ -22,11 +30,6 @@ export function useApi(url, options = {}) {
   }, [url])
 
   useEffect(() => {
-    if (data === null) {
-      setLoading(true)
-    } else {
-      setRefreshing(true)
-    }
     fetchData()
   }, [fetchData])
 

@@ -5,6 +5,7 @@ import { useSiteInfo } from '../hooks/useSiteInfo'
 import { healthStatusConfig, culturalStatusConfig } from '../constants/statusConfig'
 import Header from '../components/common/Header'
 import Footer from '../components/common/Footer'
+import PageStatus from '../components/common/PageStatus'
 import StatusCard from '../components/common/StatusCard'
 import TimeRangeSelector from '../components/common/TimeRangeSelector'
 import ActivityChart from '../components/charts/ActivityChart'
@@ -23,27 +24,12 @@ export default function SharedViewPage() {
   const apiUrl = token ? `/api/shared/${token}?range=${timeRange}` : `/api/shared/public?range=${timeRange}`
   const { data, loading, error, refreshing } = useApi(apiUrl)
 
-  if (loading) {
-    return (
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
-        <Header label="CULTURAL HEALTH DASHBOARD" subtitle={`文化的生活ダッシュボード — Monitoring ${username || '...'}'s cultural vitality`} />
-        <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 2 }}>
-          LOADING...
-        </div>
-      </div>
-    )
+  const headerProps = {
+    label: 'CULTURAL HEALTH DASHBOARD',
+    subtitle: `文化的生活ダッシュボード — Monitoring ${username || '...'}'s cultural vitality`,
   }
-
-  if (error || !data) {
-    return (
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
-        <Header label="CULTURAL HEALTH DASHBOARD" subtitle={`文化的生活ダッシュボード — Monitoring ${username || '...'}'s cultural vitality`} />
-        <div style={{ textAlign: 'center', padding: '80px 0', color: '#FF3366', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 2 }}>
-          ページが見つかりません
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <PageStatus {...headerProps} />
+  if (error || !data) return <PageStatus {...headerProps} error="ページが見つかりません" />
 
   const { presentation } = data
   const isCritical = presentation.is_critical
@@ -68,14 +54,12 @@ export default function SharedViewPage() {
         {/* Dual status cards */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 28 }}>
           <StatusCard
-            label="健康状態"
             status={data.health_status.status}
             score={data.health_status.score}
             message={data.health_status.message}
             color={healthConf.color}
           />
           <StatusCard
-            label="文化活動"
             status={data.cultural_status.status}
             score={data.cultural_status.score}
             message={data.cultural_status.message}
@@ -104,7 +88,6 @@ export default function SharedViewPage() {
         }}>
           <ActivityChart
             data={data.activity_chart}
-            height={300}
             saturation={presentation.chart_saturation}
           />
         </div>

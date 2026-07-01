@@ -4,6 +4,7 @@ import { useApi } from '../hooks/useApi'
 import { healthStatusConfig, culturalStatusConfig } from '../constants/statusConfig'
 import Header from '../components/common/Header'
 import Footer from '../components/common/Footer'
+import PageStatus from '../components/common/PageStatus'
 import StatusCard from '../components/common/StatusCard'
 import TimeRangeSelector from '../components/common/TimeRangeSelector'
 import ActivityChart from '../components/charts/ActivityChart'
@@ -18,26 +19,9 @@ export default function DashboardPage() {
   const [hoveredCategory, setHoveredCategory] = useState(null)
   const { data, loading, error, refreshing } = useApi(`/api/dashboard?range=${timeRange}`)
 
-  if (loading) {
-    return (
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
-        <Header label="ADMIN DASHBOARD" subtitle="管理用ダッシュボード" />
-        <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 2 }}>
-          LOADING...
-        </div>
-      </div>
-    )
-  }
-
+  if (loading) return <PageStatus label="ADMIN DASHBOARD" subtitle="管理用ダッシュボード" />
   if (error || !data) {
-    return (
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
-        <Header label="ADMIN DASHBOARD" subtitle="管理用ダッシュボード" />
-        <div style={{ textAlign: 'center', padding: '80px 0', color: '#FF3366', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 2 }}>
-          {error || 'データの取得に失敗しました'}
-        </div>
-      </div>
-    )
+    return <PageStatus label="ADMIN DASHBOARD" subtitle="管理用ダッシュボード" error={error || 'データの取得に失敗しました'} />
   }
 
   const healthConf = healthStatusConfig[data.health_status.status] || healthStatusConfig.NORMAL
@@ -57,14 +41,12 @@ export default function DashboardPage() {
       {/* Dual status cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 28 }}>
         <StatusCard
-          label="健康状態"
           status={data.health_status.status}
           score={data.health_status.score}
           message={data.health_status.message}
           color={healthConf.color}
         />
         <StatusCard
-          label="文化活動"
           status={data.cultural_status.status}
           score={data.cultural_status.score}
           message={data.cultural_status.message}

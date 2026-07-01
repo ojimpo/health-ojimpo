@@ -1,6 +1,6 @@
 import styles from './StatusCard.module.css'
 
-export default function StatusCard({ label, status, score, message, color, delay = 0 }) {
+export default function StatusCard({ status, score, message, color, delay = 0 }) {
   return (
     <div
       className={styles.card}
