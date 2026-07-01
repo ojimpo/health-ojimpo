@@ -4,6 +4,8 @@ from datetime import date, timedelta
 from ..database import get_db_context
 from ..models.enums import CulturalStatus, HealthStatus, TimeRange
 from ..models.schemas import (
+    ACTIVITY_CATEGORIES,
+    STATE_CATEGORIES,
     CategoryCard,
     ChartDataPoint,
     DashboardResponse,
@@ -42,10 +44,6 @@ FRIENDLY_MESSAGES = {
     HealthStatus.CAUTION: "少し気にかけてあげてください。さりげなく連絡してみるのもいいかもしれません。",
     HealthStatus.CRITICAL: "文化活動が大幅に低下しています。連絡を取ってみてください。",
 }
-
-# Map category values to ChartDataPoint fields
-ACTIVITY_CATEGORIES = ["music", "exercise", "reading", "movie", "sns", "coding", "calendar", "live", "shopping", "vitality", "outing_activity", "cd", "podcast", "game", "like", "study"]
-STATE_CATEGORIES = ["sleep", "readiness", "stress", "weight", "outing", "ctl"]
 
 # Category display labels
 CATEGORY_LABELS = {
@@ -278,6 +276,27 @@ async def _compute_bucket_category_scores(
     return {c: sum(v) / len(v) for c, v in cat_source_scores.items()}
 
 
+def _chart_buckets(
+    time_range: TimeRange, for_date: date
+) -> list[tuple[date, date, str]]:
+    """Generate (bucket_start, bucket_end, label) tuples for a time range."""
+    days_back, granularity = _get_range_params(time_range)
+    start_date = for_date - timedelta(days=days_back)
+    buckets = []
+    if granularity == "daily":
+        current = start_date
+        while current <= for_date:
+            buckets.append((current, current, f"{current.month}/{current.day}"))
+            current += timedelta(days=1)
+    else:  # weekly
+        week_start = start_date
+        while week_start <= for_date:
+            week_end = min(week_start + timedelta(days=6), for_date)
+            buckets.append((week_start, week_end, f"{week_start.month}/{week_start.day}"))
+            week_start += timedelta(days=7)
+    return buckets
+
+
 async def _get_chart_data(
     time_range: TimeRange, for_date: date | None = None
 ) -> list[ChartDataPoint]:
@@ -285,72 +304,26 @@ async def _get_chart_data(
 
     Per (source, category) pair: raw aggregation normalized by source-specific
     baseline. Within each category, source scores are averaged. Decay sources
-    use calculate_source_score for the last day of each bucket.
+    are scored at the last day of each bucket.
     """
     if for_date is None:
         for_date = date.today()
 
-    days_back, granularity = _get_range_params(time_range)
-    start_date = for_date - timedelta(days=days_back)
     sources_meta = await _fetch_chart_source_meta()
     first_dates = await get_source_first_dates()
     thresholds = await get_thresholds()
 
-    if granularity == "daily":
-        points = []
-        current = start_date
-        while current <= for_date:
-            d = current.isoformat()
-            meta_eligible, decay_sources, baseline_cats, activity_cats = (
-                _resolve_chart_meta_for_date(sources_meta, first_dates, d)
-            )
-            scores = await _compute_bucket_category_scores(
-                meta_eligible, decay_sources, current, current
-            )
-            h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
-            points.append(_make_chart_point(
-                f"{current.month}/{current.day}", scores, h, c, hs, cs
-            ))
-            current += timedelta(days=1)
-        return points
-
-    elif granularity == "weekly":
-        points = []
-        week_start = start_date
-        while week_start <= for_date:
-            week_end = min(week_start + timedelta(days=6), for_date)
-            meta_eligible, decay_sources, baseline_cats, activity_cats = (
-                _resolve_chart_meta_for_date(sources_meta, first_dates, week_end.isoformat())
-            )
-            scores = await _compute_bucket_category_scores(
-                meta_eligible, decay_sources, week_start, week_end
-            )
-            h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
-            points.append(_make_chart_point(
-                f"{week_start.month}/{week_start.day}", scores, h, c, hs, cs
-            ))
-            week_start += timedelta(days=7)
-        return points
-
-    else:  # monthly
-        points = []
-        current_month = start_date.replace(day=1)
-        while current_month <= for_date:
-            next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
-            month_end = next_month - timedelta(days=1)
-            end = min(month_end, for_date)
-            meta_eligible, decay_sources, baseline_cats, activity_cats = (
-                _resolve_chart_meta_for_date(sources_meta, first_dates, end.isoformat())
-            )
-            scores = await _compute_bucket_category_scores(
-                meta_eligible, decay_sources, current_month, end
-            )
-            h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
-            points.append(_make_chart_point(
-                f"{current_month.month}月", scores, h, c, hs, cs
-            ))
-            current_month = next_month
-        return points
+    points = []
+    for bucket_start, bucket_end, label in _chart_buckets(time_range, for_date):
+        meta_eligible, decay_sources, baseline_cats, activity_cats = (
+            _resolve_chart_meta_for_date(sources_meta, first_dates, bucket_end.isoformat())
+        )
+        scores = await _compute_bucket_category_scores(
+            meta_eligible, decay_sources, bucket_start, bucket_end
+        )
+        h, c, hs, cs = _compute_point_status(scores, baseline_cats, activity_cats, thresholds)
+        points.append(_make_chart_point(label, scores, h, c, hs, cs))
+    return points
 
 
 def _map_category(category: str) -> str:
@@ -372,34 +345,18 @@ def _make_chart_point(
     cultural_score: float | None = None,
 ) -> ChartDataPoint:
     """Create a ChartDataPoint from category data dict."""
+    fields = {c: round(cat_data.get(c, 0), 1) for c in ACTIVITY_CATEGORIES}
+    fields |= {
+        c: (round(cat_data[c], 1) if c in cat_data else None)
+        for c in STATE_CATEGORIES
+    }
     return ChartDataPoint(
         date=date_label,
-        music=round(cat_data.get("music", 0), 1),
-        exercise=round(cat_data.get("exercise", 0), 1),
-        reading=round(cat_data.get("reading", 0), 1),
-        movie=round(cat_data.get("movie", 0), 1),
-        sns=round(cat_data.get("sns", 0), 1),
-        coding=round(cat_data.get("coding", 0), 1),
-        calendar=round(cat_data.get("calendar", 0), 1),
-        live=round(cat_data.get("live", 0), 1),
-        shopping=round(cat_data.get("shopping", 0), 1),
-        vitality=round(cat_data.get("vitality", 0), 1),
-        outing_activity=round(cat_data.get("outing_activity", 0), 1),
-        cd=round(cat_data.get("cd", 0), 1),
-        podcast=round(cat_data.get("podcast", 0), 1),
-        game=round(cat_data.get("game", 0), 1),
-        like=round(cat_data.get("like", 0), 1),
-        study=round(cat_data.get("study", 0), 1),
-        sleep=round(cat_data["sleep"], 1) if "sleep" in cat_data else None,
-        readiness=round(cat_data["readiness"], 1) if "readiness" in cat_data else None,
-        stress=round(cat_data["stress"], 1) if "stress" in cat_data else None,
-        weight=round(cat_data["weight"], 1) if "weight" in cat_data else None,
-        outing=round(cat_data["outing"], 1) if "outing" in cat_data else None,
-        ctl=round(cat_data["ctl"], 1) if "ctl" in cat_data else None,
         health_status=health_status,
         cultural_status=cultural_status,
         health_score=health_score,
         cultural_score=cultural_score,
+        **fields,
     )
 
 

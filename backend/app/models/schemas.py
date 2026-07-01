@@ -1,8 +1,19 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, create_model
 
 from .enums import CulturalStatus, HealthStatus
+
+# チャートのカテゴリ定義（ここが唯一の定義箇所）。
+# 新カテゴリ追加時はここに足せば ChartDataPoint とチャート集約の両方に反映される。
+# 他に必要なのは aggregation.py の CATEGORY_LABELS と frontend の
+# constants/categories.js のみ。
+ACTIVITY_CATEGORIES = [
+    "music", "exercise", "reading", "movie", "sns", "coding", "calendar",
+    "live", "shopping", "vitality", "outing_activity", "cd", "podcast",
+    "game", "like", "study",
+]
+STATE_CATEGORIES = ["sleep", "readiness", "stress", "weight", "outing", "ctl"]
 
 
 # --- Dashboard ---
@@ -14,34 +25,18 @@ class StatusInfo(BaseModel):
     message: str
 
 
-class ChartDataPoint(BaseModel):
-    date: str
-    music: float = 0
-    exercise: float = 0
-    reading: float = 0
-    movie: float = 0
-    sns: float = 0
-    coding: float = 0
-    calendar: float = 0
-    live: float = 0
-    shopping: float = 0
-    vitality: float = 0
-    outing_activity: float = 0
-    cd: float = 0
-    podcast: float = 0
-    game: float = 0
-    like: float = 0
-    study: float = 0
-    sleep: float | None = None
-    readiness: float | None = None
-    stress: float | None = None
-    weight: float | None = None
-    outing: float | None = None
-    ctl: float | None = None
-    health_status: str | None = None
-    cultural_status: str | None = None
-    health_score: float | None = None
-    cultural_score: float | None = None
+# date + activityカテゴリ(float, 0埋め) + stateカテゴリ(float|None)
+# + ステータス系フィールドを持つチャート1点分のモデル。
+ChartDataPoint = create_model(
+    "ChartDataPoint",
+    date=(str, ...),
+    **{c: (float, 0) for c in ACTIVITY_CATEGORIES},
+    **{c: (float | None, None) for c in STATE_CATEGORIES},
+    health_status=(str | None, None),
+    cultural_status=(str | None, None),
+    health_score=(float | None, None),
+    cultural_score=(float | None, None),
+)
 
 
 class CategoryCard(BaseModel):
