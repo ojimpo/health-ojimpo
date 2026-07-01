@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import ToggleSwitch from '../common/ToggleSwitch'
 import styles from './SourceCard.module.css'
 
@@ -6,15 +6,9 @@ export default function SourceCard({ source, onUpdate, delay = 0 }) {
   const [expanded, setExpanded] = useState(false)
   const isActive = source.status === 'active'
 
-  const [baseValue, setBaseValue] = useState(source.base_value)
-  const [aggPeriod, setAggPeriod] = useState(source.aggregation_period)
+  // スライダーは操作中の値をローカルに保持（保存はonChangeで即時）。
+  // 保存後のrefetchで返る値は送信値と同じなので、propsからの再同期は不要。
   const [spontCoeff, setSpontCoeff] = useState(source.spontaneity_coefficient)
-
-  useEffect(() => {
-    setBaseValue(source.base_value)
-    setAggPeriod(source.aggregation_period)
-    setSpontCoeff(source.spontaneity_coefficient)
-  }, [source.base_value, source.aggregation_period, source.spontaneity_coefficient])
 
   const handleToggle = (field, value) => {
     onUpdate?.(source.id, { [field]: value })
@@ -72,25 +66,26 @@ export default function SourceCard({ source, onUpdate, delay = 0 }) {
           <div className={styles.section}>
             <div className={styles.sectionLabel}>集計期間 & 基準値</div>
             <div className={styles.row}>
+              {/* 非制御input: keyでサーバー値の変更時にリセット、保存はonBlurで */}
               <div className={styles.inputGroup}>
                 <span className={styles.inputLabel}>期間 (日)</span>
                 <input
+                  key={source.aggregation_period}
                   className={styles.input}
                   type="number"
-                  value={aggPeriod}
-                  onChange={e => setAggPeriod(e.target.value)}
-                  onBlur={() => handleBlur('aggregation_period', aggPeriod, source.aggregation_period)}
+                  defaultValue={source.aggregation_period}
+                  onBlur={e => handleBlur('aggregation_period', e.target.value, source.aggregation_period)}
                   style={{ width: 60 }}
                 />
               </div>
               <div className={styles.inputGroup}>
                 <span className={styles.inputLabel}>基準値</span>
                 <input
+                  key={source.base_value}
                   className={styles.input}
                   type="number"
-                  value={baseValue}
-                  onChange={e => setBaseValue(e.target.value)}
-                  onBlur={() => handleBlur('base_value', baseValue, source.base_value)}
+                  defaultValue={source.base_value}
+                  onBlur={e => handleBlur('base_value', e.target.value, source.base_value)}
                   style={{ color: source.color }}
                 />
               </div>
