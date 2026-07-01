@@ -265,9 +265,8 @@ async def _compute_bucket_category_scores(
                 avg = raw / bucket_days if bucket_days > 0 else 0
                 score = (avg / daily_base) * 100 if daily_base > 0 else 0
             else:
-                daily_base = (base_value / max(period, 1)) * coeff
-                expected = daily_base * bucket_days
-                score = (raw / expected) * 100 if expected > 0 else 0
+                expected = (base_value / max(period, 1)) * bucket_days
+                score = (raw / expected) * 100 * coeff if expected > 0 else 0
 
             cat_source_scores.setdefault(cat, []).append(score)
 

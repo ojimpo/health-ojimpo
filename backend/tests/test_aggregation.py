@@ -119,6 +119,16 @@ async def test_chart_card_only_source_not_stacked(test_db):
     assert points[-1].cd == 0
 
 
+async def test_chart_non_decay_coefficient_multiplies_score(test_db):
+    # scoring.py と同じ向きで係数が掛かること（以前は基準側に掛かり逆方向に効いていた）
+    await add_source("src", "music", base_value=70, aggregation_period=7,
+                     spontaneity_coefficient=0.6)
+    await add_record(PAST.isoformat(), "src", "music", 10)
+    points = await _get_chart_data(TimeRange.ONE_MONTH, PAST)
+    # daily base = 10, raw 10 -> 100% * 0.6
+    assert points[-1].music == pytest.approx(60.0)
+
+
 async def test_chart_uses_minutes_when_positive(test_db):
     # Non-decay sources aggregate minutes if set, else raw_value.
     await add_source("src", "music", base_value=70, aggregation_period=7)
