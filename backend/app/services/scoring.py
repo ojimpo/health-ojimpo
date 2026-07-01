@@ -1,12 +1,38 @@
+"""Score calculation.
+
+Each source is scored as a percentage of its baseline (100 = baseline met,
+no upper cap), by one of three methods selected via source_settings:
+
+- ``daily_avg``: average of daily values vs base_value (Oura-style state
+  scores). ``decay_half_life`` is ignored; 'stress' category is excluded
+  (lower-is-better).
+- ``sum`` + ``decay_half_life`` set: exponentially decay-weighted sum,
+  normalized so that maintaining base_value/period per day scores ~100.
+- ``sum`` + ``decay_half_life`` NULL: legacy windowed sum over
+  aggregation_period days (kept as fallback).
+
+Aggregation: per-source scores are averaged within each category
+(category = one indicator), then category scores are averaged into the
+health / cultural axes. See ``calculate_scores``.
+"""
 import json
 import logging
 import math
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from ..database import get_db_context
 from ..models.enums import CulturalStatus, HealthStatus
 
 logger = logging.getLogger(__name__)
+
+LN2 = math.log(2)
+
+DEFAULT_NORMAL_THRESHOLD = 70
+DEFAULT_CAUTION_THRESHOLD = 40
+
+
+# --- thresholds / status mapping ---
 
 
 async def get_thresholds() -> dict:
@@ -16,6 +42,78 @@ async def get_thresholds() -> dict:
             "SELECT key, value FROM global_settings WHERE key LIKE '%threshold'"
         )
         return {row[0]: float(row[1]) for row in rows}
+
+
+def health_status_from_score(score: float, thresholds: dict) -> HealthStatus:
+    if score >= thresholds.get("score_normal_threshold", DEFAULT_NORMAL_THRESHOLD):
+        return HealthStatus.NORMAL
+    if score >= thresholds.get("score_caution_threshold", DEFAULT_CAUTION_THRESHOLD):
+        return HealthStatus.CAUTION
+    return HealthStatus.CRITICAL
+
+
+def cultural_status_from_score(score: float, thresholds: dict) -> CulturalStatus:
+    if score >= thresholds.get("score_normal_threshold", DEFAULT_NORMAL_THRESHOLD):
+        return CulturalStatus.RICH
+    if score >= thresholds.get("score_caution_threshold", DEFAULT_CAUTION_THRESHOLD):
+        return CulturalStatus.MODERATE
+    return CulturalStatus.LOW
+
+
+# --- source metadata ---
+
+
+@dataclass
+class SourceMeta:
+    """Effective scoring parameters of a source at a given date."""
+
+    base_value: float = 100.0
+    period: int = 7
+    half_life: float | None = None
+    coeff: float = 1.0
+    classification: str = "baseline"
+    score_method: str = "sum"
+    weights: dict[str, float] | None = None
+
+
+async def _load_source_meta(db, source_id: str, for_date_str: str) -> SourceMeta:
+    """Load source_settings and apply the baseline effective at for_date_str."""
+    meta = SourceMeta()
+    rows = await db.execute_fetchall(
+        """SELECT base_value, aggregation_period, decay_half_life,
+                  spontaneity_coefficient, classification, score_method, category_weights
+        FROM source_settings WHERE id = ?""",
+        (source_id,),
+    )
+    if rows:
+        r = rows[0]
+        meta.base_value = float(r[0])
+        meta.period = int(r[1])
+        meta.half_life = float(r[2]) if r[2] is not None else None
+        meta.coeff = float(r[3])
+        meta.classification = r[4]
+        meta.score_method = r[5]
+        meta.weights = json.loads(r[6]) if r[6] else None
+
+    history = await db.execute_fetchall(
+        """SELECT base_value FROM baseline_history
+        WHERE source_id = ? AND effective_from <= ?
+        ORDER BY effective_from DESC LIMIT 1""",
+        (source_id, for_date_str),
+    )
+    if history:
+        meta.base_value = float(history[0][0])
+    return meta
+
+
+async def get_effective_baseline(source_id: str, for_date: str) -> tuple[float, int, float | None]:
+    """Get the effective baseline value, aggregation period, and decay half_life.
+
+    decay_half_life is None when the source uses the legacy windowed-sum method.
+    """
+    async with get_db_context() as db:
+        meta = await _load_source_meta(db, source_id, for_date)
+    return meta.base_value, meta.period, meta.half_life
 
 
 async def get_source_first_dates() -> dict[str, str]:
@@ -32,213 +130,177 @@ async def get_source_first_dates() -> dict[str, str]:
     return {row[0]: row[1] for row in rows if row[1]}
 
 
-async def get_effective_baseline(source_id: str, for_date: str) -> tuple[float, int, float | None]:
-    """Get the effective baseline value, aggregation period, and decay half_life for a source.
+# --- per-method scoring (pure math) ---
 
-    Returns (base_value, aggregation_period_days, decay_half_life).
-    decay_half_life is None when the source uses the legacy windowed-sum method.
+
+def decay_score(
+    daily_values: list[tuple[str, float]],
+    for_date: date,
+    base_value: float,
+    period: int,
+    half_life: float,
+    coeff: float,
+) -> float:
+    """Exponentially decay-weighted score.
+
+    weight(t) = 2^(-days_ago / half_life). Normalized to the steady-state
+    weighted sum of maintaining base_value/period per day
+    (= rate * half_life / ln2), so keeping the baseline pace scores ~100.
     """
-    async with get_db_context() as db:
-        # Check baseline_history first
-        rows = await db.execute_fetchall(
-            """SELECT base_value FROM baseline_history
-            WHERE source_id = ? AND effective_from <= ?
-            ORDER BY effective_from DESC LIMIT 1""",
-            (source_id, for_date),
-        )
-        if rows:
-            base_value = float(rows[0][0])
-        else:
-            # Fall back to source_settings default
-            rows = await db.execute_fetchall(
-                "SELECT base_value FROM source_settings WHERE id = ?",
-                (source_id,),
-            )
-            base_value = float(rows[0][0]) if rows else 100.0
+    weighted_sum = 0.0
+    for d, val in daily_values:
+        days_ago = (for_date - date.fromisoformat(d)).days
+        weighted_sum += val * math.exp(-LN2 * days_ago / half_life)
+    norm_base = (base_value / period) * (half_life / LN2)
+    return (weighted_sum / norm_base) * 100 * coeff
 
-        # Get aggregation period and decay_half_life
-        rows = await db.execute_fetchall(
-            "SELECT aggregation_period, decay_half_life FROM source_settings WHERE id = ?",
-            (source_id,),
-        )
-        period = int(rows[0][0]) if rows else 7
-        half_life = float(rows[0][1]) if rows and rows[0][1] is not None else None
 
-        return base_value, period, half_life
+# --- per-method scoring (DB-backed) ---
+#
+# Each helper returns (score, raw_total). The window normally ends at
+# window_end; when scoring today, window_end is yesterday and today_str is
+# set — today's (incomplete) data is added on top as a bonus so it never
+# drags the score down but still shows up immediately.
+
+
+async def _fetch_daily_sums(
+    db, source_id: str, start: str, end: str, extra_day: str | None
+) -> list[tuple[str, float]]:
+    """Daily raw_value sums in [start, end], plus extra_day (today bonus)."""
+    rows = await db.execute_fetchall(
+        """SELECT date, SUM(raw_value) FROM activity_records
+        WHERE source = ? AND date >= ? AND date <= ?
+        GROUP BY date""",
+        (source_id, start, end),
+    )
+    result = [(r[0], float(r[1])) for r in rows]
+    if extra_day:
+        rows = await db.execute_fetchall(
+            """SELECT date, SUM(raw_value) FROM activity_records
+            WHERE source = ? AND date = ?
+            GROUP BY date""",
+            (source_id, extra_day),
+        )
+        result += [(r[0], float(r[1])) for r in rows]
+    return result
+
+
+async def _score_daily_avg(
+    db, source_id: str, meta: SourceMeta, window_end: str, today_str: str | None
+) -> tuple[float, float]:
+    """score = (avg daily value / base_value) * 100 * coeff.
+
+    Excludes 'stress' (lower-is-better). Optional per-category weights
+    (e.g. Oura: readiness 0.6, sleep 0.4) are applied before averaging.
+    """
+    start = (date.fromisoformat(window_end) - timedelta(days=meta.period - 1)).isoformat()
+    rows = list(await db.execute_fetchall(
+        """SELECT date, category, SUM(raw_value) FROM activity_records
+        WHERE source = ? AND date >= ? AND date <= ? AND category != 'stress'
+        GROUP BY date, category""",
+        (source_id, start, window_end),
+    ))
+    if today_str:
+        rows += list(await db.execute_fetchall(
+            """SELECT date, category, SUM(raw_value) FROM activity_records
+            WHERE source = ? AND date = ? AND category != 'stress'
+            GROUP BY date, category""",
+            (source_id, today_str),
+        ))
+    if not rows or meta.base_value <= 0:
+        return 0.0, 0.0
+
+    daily_totals: dict[str, float] = {}
+    for d, cat, val in rows:
+        w = meta.weights.get(cat, 1.0) if meta.weights else 1.0
+        daily_totals[d] = daily_totals.get(d, 0.0) + float(val) * w
+
+    daily_avg = sum(daily_totals.values()) / len(daily_totals)
+    return (daily_avg / meta.base_value) * 100 * meta.coeff, daily_avg
+
+
+async def _score_decay(
+    db, source_id: str, meta: SourceMeta, for_date: date, window_end: str, today_str: str | None
+) -> tuple[float, float]:
+    """Exponential decay weighted sum; sees up to 5x half_life days back."""
+    lookback = int(meta.half_life * 5)
+    start = (date.fromisoformat(window_end) - timedelta(days=lookback)).isoformat()
+    daily = await _fetch_daily_sums(db, source_id, start, window_end, today_str)
+    if meta.base_value <= 0:
+        return 0.0, 0.0
+    score = decay_score(daily, for_date, meta.base_value, meta.period, meta.half_life, meta.coeff)
+    return score, float(sum(v for _, v in daily))
+
+
+async def _score_windowed(
+    db, source_id: str, meta: SourceMeta, window_end: str, today_str: str | None
+) -> tuple[float, float]:
+    """Legacy windowed sum over aggregation_period days.
+
+    For non-event sources with partial data coverage, the baseline is
+    prorated by days_with_data/period so sparse-but-on-pace activity
+    still scores 100.
+    """
+    start = (date.fromisoformat(window_end) - timedelta(days=meta.period - 1)).isoformat()
+    rows = await db.execute_fetchall(
+        """SELECT COALESCE(SUM(raw_value), 0), COUNT(DISTINCT date)
+        FROM activity_records
+        WHERE source = ? AND date >= ? AND date <= ?""",
+        (source_id, start, window_end),
+    )
+    raw_total = float(rows[0][0]) if rows else 0.0
+    days_with_data = int(rows[0][1]) if rows else 0
+
+    if today_str:
+        rows = await db.execute_fetchall(
+            """SELECT COALESCE(SUM(raw_value), 0), COUNT(DISTINCT date)
+            FROM activity_records WHERE source = ? AND date = ?""",
+            (source_id, today_str),
+        )
+        raw_total += float(rows[0][0]) if rows else 0.0
+        days_with_data += int(rows[0][1]) if rows else 0
+
+    if meta.base_value <= 0:
+        return 0.0, raw_total
+
+    if meta.classification != "event" and 0 < days_with_data < meta.period:
+        adjusted_base = meta.base_value * (days_with_data / meta.period)
+    else:
+        adjusted_base = meta.base_value
+
+    return (raw_total / adjusted_base) * 100 * meta.coeff, raw_total
 
 
 async def calculate_source_score(
     source_id: str, for_date: date
 ) -> tuple[float, float, float]:
-    """Calculate score for a single source.
+    """Calculate score for a single source. Returns (score, raw_total, base_value).
 
-    Returns (score, raw_total, base_value).
-
-    When for_date is today, uses "yesterday window + today bonus" approach:
-    the main window covers yesterday back to (period) days, and any data
-    recorded today is added on top. This prevents incomplete today data
-    from dragging down the score while still reflecting new activity immediately.
-
-    Scoring methods (determined by source_settings.score_method + decay_half_life):
-    - 'daily_avg': score = (avg_daily_value / base_value) * 100 * coeff
-      Excludes 'stress' category (lower-is-better). decay_half_life ignored.
-    - 'sum' + decay_half_life set: exponential decay weighted sum
-      norm = (base_value / aggregation_period) * (half_life / ln2)
-      score = weighted_sum / norm * 100 * coeff
-    - 'sum' + decay_half_life NULL: legacy windowed sum (fallback)
-      score = (period_total / base_value) * 100 * coeff
+    When for_date is today, the main window ends at yesterday and today's
+    data is added as a bonus (see the per-method helpers).
     """
-    # When calculating for today, shift the window to end at yesterday
-    # so that incomplete today data doesn't penalize the score.
-    # Today's data is added as a bonus on top.
     is_today = for_date == date.today()
-    window_end = for_date - timedelta(days=1) if is_today else for_date
-
-    date_str = window_end.isoformat()
+    window_end = (for_date - timedelta(days=1) if is_today else for_date).isoformat()
     today_str = for_date.isoformat() if is_today else None
-    base_value, period, half_life = await get_effective_baseline(source_id, date_str)
 
     async with get_db_context() as db:
-        rows = await db.execute_fetchall(
-            "SELECT spontaneity_coefficient, classification, score_method FROM source_settings WHERE id = ?",
-            (source_id,),
-        )
-        coeff = float(rows[0][0]) if rows else 1.0
-        classification = rows[0][1] if rows else "baseline"
-        score_method = rows[0][2] if rows else "sum"
-
-        if score_method == "daily_avg":
-            start_date = (window_end - timedelta(days=period - 1)).isoformat()
-            # Average daily values (exclude stress: lower-is-better)
-            # Optionally apply per-category weights (e.g. Oura: readiness 0.6, sleep 0.4)
-            weight_rows = await db.execute_fetchall(
-                "SELECT category_weights FROM source_settings WHERE id = ?",
-                (source_id,),
-            )
-            raw_weights = weight_rows[0][0] if weight_rows and weight_rows[0][0] else None
-            weights = json.loads(raw_weights) if raw_weights else None
-
-            rows = await db.execute_fetchall(
-                """SELECT date, category,
-                          SUM(raw_value) as val
-                FROM activity_records
-                WHERE source = ? AND date >= ? AND date <= ? AND category != 'stress'
-                GROUP BY date, category""",
-                (source_id, start_date, date_str),
-            )
-            rows = list(rows)
-
-            # For today: include today's data in the average if it exists (bonus)
-            if today_str:
-                today_rows = await db.execute_fetchall(
-                    """SELECT date, category, SUM(raw_value) as val
-                    FROM activity_records
-                    WHERE source = ? AND date = ? AND category != 'stress'
-                    GROUP BY date, category""",
-                    (source_id, today_str),
-                )
-                rows += list(today_rows)
-
-            if not rows or base_value <= 0:
-                return 0.0, 0.0, base_value
-
-            daily_totals: dict[str, float] = {}
-            for row in rows:
-                d, cat, val = row[0], row[1], float(row[2])
-                w = weights.get(cat, 1.0) if weights else 1.0
-                daily_totals[d] = daily_totals.get(d, 0.0) + val * w
-
-            daily_avg = sum(daily_totals.values()) / len(daily_totals)
-            score = (daily_avg / base_value) * 100 * coeff
-            return score, daily_avg, base_value
-
-        if half_life is not None:
-            # Exponential decay: fetch up to 5× half_life days of history
-            lookback = int(half_life * 5)
-            start_date = (window_end - timedelta(days=lookback)).isoformat()
-
-            rows = await db.execute_fetchall(
-                """SELECT date, SUM(raw_value) as val
-                FROM activity_records
-                WHERE source = ? AND date >= ? AND date <= ?
-                GROUP BY date""",
-                (source_id, start_date, date_str),
-            )
-            # Include today's data as bonus if available
-            if today_str:
-                today_rows = await db.execute_fetchall(
-                    """SELECT date, SUM(raw_value) as val
-                    FROM activity_records
-                    WHERE source = ? AND date = ?
-                    GROUP BY date""",
-                    (source_id, today_str),
-                )
-                rows = list(rows) + list(today_rows)
-
+        meta = await _load_source_meta(db, source_id, window_end)
+        if meta.score_method == "daily_avg":
+            score, raw = await _score_daily_avg(db, source_id, meta, window_end, today_str)
+        elif meta.half_life is not None:
+            score, raw = await _score_decay(db, source_id, meta, for_date, window_end, today_str)
         else:
-            # Legacy windowed sum
-            start_date = (window_end - timedelta(days=period - 1)).isoformat()
-            rows = await db.execute_fetchall(
-                """SELECT COALESCE(SUM(raw_value), 0) as total_value,
-                          COUNT(DISTINCT date) as days_with_data
-                FROM activity_records
-                WHERE source = ? AND date >= ? AND date <= ?""",
-                (source_id, start_date, date_str),
-            )
-            raw_total = float(rows[0][0]) if rows else 0.0
-            days_with_data = int(rows[0][1]) if rows else 0
+            score, raw = await _score_windowed(db, source_id, meta, window_end, today_str)
+    return score, raw, meta.base_value
 
-            # Add today's data as bonus if available
-            if today_str:
-                today_rows = await db.execute_fetchall(
-                    """SELECT COALESCE(SUM(raw_value), 0) as total_value,
-                              COUNT(DISTINCT date) as has_data
-                    FROM activity_records
-                    WHERE source = ? AND date = ?""",
-                    (source_id, today_str),
-                )
-                today_total = float(today_rows[0][0]) if today_rows else 0.0
-                today_has_data = int(today_rows[0][1]) if today_rows else 0
-                raw_total += today_total
-                days_with_data += today_has_data
 
-            if base_value <= 0:
-                return 0.0, raw_total, base_value
-
-            if classification != "event" and days_with_data > 0 and days_with_data < period:
-                adjusted_base = base_value * (days_with_data / period)
-            else:
-                adjusted_base = base_value
-
-            score = (raw_total / adjusted_base) * 100 * coeff
-            return score, raw_total, base_value
-
-    if base_value <= 0 or half_life is None:
-        return 0.0, 0.0, base_value
-
-    # Compute exponentially weighted sum
-    # weight(t) = exp(-ln2 * days_ago / half_life)
-    ln2 = math.log(2)
-    weighted_sum = 0.0
-    raw_total = 0.0
-    for row in rows:
-        days_ago = (for_date - date.fromisoformat(row[0])).days
-        weight = math.exp(-ln2 * days_ago / half_life)
-        val = float(row[1])
-        weighted_sum += val * weight
-        raw_total += val
-
-    # Normalize: steady-state sum when maintaining (base_value / period) per day
-    # = rate * half_life / ln2
-    norm_base = (base_value / period) * (half_life / ln2)
-    score = (weighted_sum / norm_base) * 100 * coeff
-    return score, raw_total, base_value
+# --- axis aggregation ---
 
 
 async def calculate_scores(for_date: date | None = None) -> dict:
     """Calculate all scores for a given date.
 
-    Returns dict with health_status, cultural_status, and per-source scores.
+    Returns dict with health_status, cultural_status, and axis scores.
 
     Aggregation: per-source scores are first averaged within each category
     (a category = one indicator), then category scores are averaged across
@@ -260,18 +322,25 @@ async def calculate_scores(for_date: date | None = None) -> dict:
             "SELECT id, category FROM source_settings WHERE status = 'active' AND display_type IN ('activity', 'card_only')"
         )
 
-    baseline_rows = [r for r in baseline_rows if (first_dates.get(r[0]) or "9999") <= for_date_str]
-    activity_rows = [r for r in activity_rows if (first_dates.get(r[0]) or "9999") <= for_date_str]
+    def started(row) -> bool:
+        return (first_dates.get(row[0]) or "9999") <= for_date_str
+
+    # A source can appear on both axes (e.g. classification=baseline and
+    # display_type=activity) — compute its score only once.
+    score_cache: dict[str, float] = {}
+
+    async def source_score(source_id: str) -> float:
+        if source_id not in score_cache:
+            score_cache[source_id], _, _ = await calculate_source_score(source_id, for_date)
+        return score_cache[source_id]
 
     baseline_cats: dict[str, list[float]] = {}
-    for source_id, category in baseline_rows:
-        score, _, _ = await calculate_source_score(source_id, for_date)
-        baseline_cats.setdefault(category, []).append(score)
+    for source_id, category in filter(started, baseline_rows):
+        baseline_cats.setdefault(category, []).append(await source_score(source_id))
 
     activity_cats: dict[str, list[float]] = {}
-    for source_id, category in activity_rows:
-        score, _, _ = await calculate_source_score(source_id, for_date)
-        activity_cats.setdefault(category, []).append(score)
+    for source_id, category in filter(started, activity_rows):
+        activity_cats.setdefault(category, []).append(await source_score(source_id))
 
     baseline_cat_scores = [sum(v) / len(v) for v in baseline_cats.values()]
     activity_cat_scores = [sum(v) / len(v) for v in activity_cats.values()]
@@ -280,28 +349,10 @@ async def calculate_scores(for_date: date | None = None) -> dict:
     cultural_pct = sum(activity_cat_scores) / len(activity_cat_scores) if activity_cat_scores else 0
     activity_total = sum(activity_cat_scores)
 
-    # Determine statuses (unified threshold for both health and cultural)
-    score_normal = thresholds.get("score_normal_threshold", 70)
-    score_caution = thresholds.get("score_caution_threshold", 40)
-
-    if baseline_avg >= score_normal:
-        health_status = HealthStatus.NORMAL
-    elif baseline_avg >= score_caution:
-        health_status = HealthStatus.CAUTION
-    else:
-        health_status = HealthStatus.CRITICAL
-
-    if cultural_pct >= score_normal:
-        cultural_status = CulturalStatus.RICH
-    elif cultural_pct >= score_caution:
-        cultural_status = CulturalStatus.MODERATE
-    else:
-        cultural_status = CulturalStatus.LOW
-
     return {
         "baseline_avg": round(baseline_avg, 1),
-        "health_status": health_status,
+        "health_status": health_status_from_score(baseline_avg, thresholds),
         "cultural_pct": round(cultural_pct, 1),
-        "cultural_status": cultural_status,
+        "cultural_status": cultural_status_from_score(cultural_pct, thresholds),
         "activity_total": round(activity_total, 1),
     }
