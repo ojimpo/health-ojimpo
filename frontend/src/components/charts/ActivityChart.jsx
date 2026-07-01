@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from 'recharts'
 import { activityCategories, stateCategories } from '../../constants/categories'
 import { healthStatusConfig, culturalStatusConfig } from '../../constants/statusConfig'
@@ -100,11 +100,11 @@ function getTickInterval(dataLength, mobile) {
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
-  useState(() => {
+  useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768)
     window.addEventListener('resize', handler)
     return () => window.removeEventListener('resize', handler)
-  })
+  }, [])
   return isMobile
 }
 
