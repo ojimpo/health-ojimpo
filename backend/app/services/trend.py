@@ -14,44 +14,29 @@ async def generate_trend_comments(for_date: date | None = None) -> list[dict]:
     comments = []
 
     async with get_db_context() as db:
-        # Current week total vs previous week (all active sources)
         current_start = (for_date - timedelta(days=6)).isoformat()
         prev_start = (for_date - timedelta(days=13)).isoformat()
         prev_end = (for_date - timedelta(days=7)).isoformat()
 
-        current_rows = await db.execute_fetchall(
-            """SELECT COALESCE(SUM(minutes), 0) FROM activity_records
-            WHERE source IN (SELECT id FROM source_settings WHERE status = 'active' AND display_type = 'activity')
-              AND date >= ? AND date <= ?""",
-            (current_start, for_date.isoformat()),
-        )
-        prev_rows = await db.execute_fetchall(
-            """SELECT COALESCE(SUM(minutes), 0) FROM activity_records
-            WHERE source IN (SELECT id FROM source_settings WHERE status = 'active' AND display_type = 'activity')
-              AND date >= ? AND date <= ?""",
-            (prev_start, prev_end),
-        )
-
-        current_total = float(current_rows[0][0]) if current_rows else 0
-        prev_total = float(prev_rows[0][0]) if prev_rows else 0
-
-        # Per-source trends
+        # Per-source trends: current week vs previous week
         source_rows = await db.execute_fetchall(
-            "SELECT id, name, category FROM source_settings WHERE status = 'active' AND display_type = 'activity'"
+            "SELECT id, name FROM source_settings WHERE status = 'active' AND display_type = 'activity'"
         )
 
-        for srow in source_rows:
-            sid, sname, scat = srow[0], srow[1], srow[2]
-            cur = await db.execute_fetchall(
-                "SELECT COALESCE(SUM(minutes), 0) FROM activity_records WHERE source = ? AND date >= ? AND date <= ?",
-                (sid, current_start, for_date.isoformat()),
+        async def weekly_minutes(start: str, end: str) -> dict[str, float]:
+            rows = await db.execute_fetchall(
+                """SELECT source, COALESCE(SUM(minutes), 0) FROM activity_records
+                WHERE date >= ? AND date <= ? GROUP BY source""",
+                (start, end),
             )
-            prev = await db.execute_fetchall(
-                "SELECT COALESCE(SUM(minutes), 0) FROM activity_records WHERE source = ? AND date >= ? AND date <= ?",
-                (sid, prev_start, prev_end),
-            )
-            s_cur = float(cur[0][0])
-            s_prev = float(prev[0][0])
+            return {r[0]: float(r[1]) for r in rows}
+
+        current_by_source = await weekly_minutes(current_start, for_date.isoformat())
+        prev_by_source = await weekly_minutes(prev_start, prev_end)
+
+        for sid, sname in source_rows:
+            s_cur = current_by_source.get(sid, 0.0)
+            s_prev = prev_by_source.get(sid, 0.0)
 
             if s_prev > 0:
                 change_pct = ((s_cur - s_prev) / s_prev) * 100

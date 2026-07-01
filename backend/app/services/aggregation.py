@@ -20,9 +20,11 @@ from ..sources.registry import SOURCE_ADAPTERS
 from .scoring import (
     calculate_scores,
     calculate_source_score,
+    cultural_status_from_score,
     decay_score,
     get_source_first_dates,
     get_thresholds,
+    health_status_from_score,
 )
 from .trend import generate_trend_comments
 
@@ -66,26 +68,6 @@ CATEGORY_LABELS = {
     "like": "Like",
     "study": "勉強",
 }
-
-# Category colors
-CATEGORY_COLORS = {
-    "music": "#00F0FF",
-    "exercise": "#FF3366",
-    "reading": "#ADFF2F",
-    "movie": "#FF9500",
-    "sns": "#FF9500",
-    "coding": "#50FA7B",
-    "calendar": "#FFB86C",
-    "live": "#FF79C6",
-    "shopping": "#8BE9FD",
-    "vitality": "#50FA7B",
-    "outing_activity": "#FFB86C",
-    "fitness": "#50FA7B",
-    "game": "#66C0F4",
-    "like": "#E0245E",
-    "study": "#5C6BC0",
-}
-
 
 def _get_range_params(time_range: TimeRange) -> tuple[int, str]:
     match time_range:
@@ -187,27 +169,14 @@ def _compute_point_status(
     activity_vals = [scores.get(k, 0) for k in activity_cats]
     cultural_pct = sum(activity_vals) / len(activity_vals) if activity_vals else None
 
-    # Unified threshold for both health and cultural
-    sn = thresholds.get("score_normal_threshold", 70)
-    sc = thresholds.get("score_caution_threshold", 40)
-
-    health = None
-    if baseline_avg is not None:
-        if baseline_avg >= sn:
-            health = "NORMAL"
-        elif baseline_avg >= sc:
-            health = "CAUTION"
-        else:
-            health = "CRITICAL"
-
-    cultural = None
-    if cultural_pct is not None:
-        if cultural_pct >= sn:
-            cultural = "RICH"
-        elif cultural_pct >= sc:
-            cultural = "MODERATE"
-        else:
-            cultural = "LOW"
+    health = (
+        health_status_from_score(baseline_avg, thresholds).value
+        if baseline_avg is not None else None
+    )
+    cultural = (
+        cultural_status_from_score(cultural_pct, thresholds).value
+        if cultural_pct is not None else None
+    )
 
     return (
         health,
