@@ -8,6 +8,17 @@
 --       ~9,000q/日)は旧 63000 のまま正しく~100点で再現され、境界で段差が出ない。
 --       ※ effective_from を新ロジック開始日(4/26)に合わせるのが肝。ここを5/27等にすると
 --         4/26〜境界の新ロジック高クエリが旧基準で計算され187等に膨張する人工的な段差が出る。
+-- nextdns_outing_activity は本番DBに手動追加されたソースでマイグレーションに定義が無く、
+-- まっさらなDBでは下の baseline_history INSERT が FK 制約違反で init_db ごと失敗する。
+-- 新規環境でも通るよう、ここでソース定義を冪等に補完する。
+INSERT OR IGNORE INTO source_settings
+    (id, name, category, icon, display_type, classification, phase, status, color,
+     show_personal, show_shared, aggregation_period, base_value, base_unit,
+     spontaneity_coefficient, sort_order, score_method, decay_half_life)
+VALUES
+    ('nextdns_outing_activity', '外出 (NextDNS)', 'outing_activity', '🚶', 'activity',
+     'event', 'phase3', 'active', '#66BB6A', 1, 1, 7, 132000, 'queries', 1.0, 19, 'sum', 7.0);
+
 -- baseline_history は (source_id, effective_from) に UNIQUE 制約が無く、init_db は
 -- 毎起動で全マイグレーションを再実行するため、素の INSERT だと重複行が増える。
 -- WHERE NOT EXISTS で冪等化する。
