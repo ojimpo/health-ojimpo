@@ -191,6 +191,17 @@ async def test_today_data_added_as_bonus_decay(test_db):
     assert raw == pytest.approx(50.0)
 
 
+async def test_daily_avg_today_only_data_still_scores(test_db):
+    # 基準窓（昨日以前）が空でも、当日データがあればスコアに反映される
+    today = date.today()
+    await add_source("oura", "sleep", base_value=80, aggregation_period=7,
+                     score_method="daily_avg", display_type="state")
+    await add_record(today.isoformat(), "oura", "sleep", 80)
+    score, raw, _ = await calculate_source_score("oura", today)
+    assert raw == pytest.approx(80.0)
+    assert score == pytest.approx(100.0)
+
+
 # --- baseline history ---
 
 

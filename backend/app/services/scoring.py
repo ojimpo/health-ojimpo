@@ -126,14 +126,7 @@ async def calculate_source_score(
                 GROUP BY date, category""",
                 (source_id, start_date, date_str),
             )
-            if not rows or base_value <= 0:
-                return 0.0, 0.0, base_value
-
-            daily_totals: dict[str, float] = {}
-            for row in rows:
-                d, cat, val = row[0], row[1], float(row[2])
-                w = weights.get(cat, 1.0) if weights else 1.0
-                daily_totals[d] = daily_totals.get(d, 0.0) + val * w
+            rows = list(rows)
 
             # For today: include today's data in the average if it exists (bonus)
             if today_str:
@@ -144,10 +137,16 @@ async def calculate_source_score(
                     GROUP BY date, category""",
                     (source_id, today_str),
                 )
-                for row in today_rows:
-                    d, cat, val = row[0], row[1], float(row[2])
-                    w = weights.get(cat, 1.0) if weights else 1.0
-                    daily_totals[d] = daily_totals.get(d, 0.0) + val * w
+                rows += list(today_rows)
+
+            if not rows or base_value <= 0:
+                return 0.0, 0.0, base_value
+
+            daily_totals: dict[str, float] = {}
+            for row in rows:
+                d, cat, val = row[0], row[1], float(row[2])
+                w = weights.get(cat, 1.0) if weights else 1.0
+                daily_totals[d] = daily_totals.get(d, 0.0) + val * w
 
             daily_avg = sum(daily_totals.values()) / len(daily_totals)
             score = (daily_avg / base_value) * 100 * coeff
