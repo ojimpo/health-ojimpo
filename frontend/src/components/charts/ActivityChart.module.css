@@ -1,5 +1,8 @@
 .container {
   position: relative;
+  /* ツールチップがチャート外にはみ出した際、後続のカテゴリカード
+     （transformによるスタッキングコンテキスト）より上に描画する */
+  z-index: 2;
   background: var(--bg-primary);
   border: 1px solid var(--border-subtle);
   border-radius: 16px;
