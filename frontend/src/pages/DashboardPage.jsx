@@ -39,7 +39,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Dual status cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 28 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, marginBottom: 28 }}>
         <StatusCard
           status={data.health_status.status}
           score={data.health_status.score}

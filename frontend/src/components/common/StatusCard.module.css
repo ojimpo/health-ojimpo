@@ -36,4 +36,5 @@
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 4px;
+  overflow-wrap: break-word;
 }
