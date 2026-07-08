@@ -38,7 +38,20 @@ async def init_db():
     migrations_dir = Path(__file__).parent / "migrations"
     async with get_db_context() as db:
         await db.execute("PRAGMA foreign_keys=OFF")
+        # 適用済みマイグレーションは再実行しない。エラースキップ方式だけだと
+        # UPDATE/DELETEのみで構成された（エラーの出ない）マイグレーションが
+        # 起動のたびに再実行され、DB上で調整した設定や集計レコードを巻き戻す
+        await db.execute(
+            """CREATE TABLE IF NOT EXISTS schema_migrations (
+                filename TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )"""
+        )
+        rows = await db.execute_fetchall("SELECT filename FROM schema_migrations")
+        applied = {r[0] for r in rows}
         for sql_file in sorted(migrations_dir.glob("*.sql")):
+            if sql_file.name in applied:
+                continue
             sql = sql_file.read_text()
             try:
                 await db.executescript(sql)
@@ -48,5 +61,8 @@ async def init_db():
                     logger.debug("Skipping (already applied): %s", sql_file.name)
                 else:
                     raise
+            await db.execute(
+                "INSERT INTO schema_migrations (filename) VALUES (?)", (sql_file.name,)
+            )
         await db.commit()
         await db.execute("PRAGMA foreign_keys=ON")
