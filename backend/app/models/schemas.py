@@ -187,6 +187,37 @@ class IngestStatusResponse(BaseModel):
     next_scheduled: str | None
 
 
+# --- Records（生データ読み取り、MCP向け） ---
+
+
+class ActivityRecordItem(BaseModel):
+    id: int
+    date: str
+    source: str
+    category: str
+    minutes: float
+    raw_value: float
+    raw_unit: str
+    metadata: str | None = None
+
+
+class RecordsAggregateItem(BaseModel):
+    period: str  # "2026-06"（month）/ "2026-W23"（week）
+    source: str
+    category: str
+    minutes: float
+    raw_value: float
+    days: int
+
+
+class RecordsResponse(BaseModel):
+    total: int
+    returned: int
+    truncated: bool
+    records: list[ActivityRecordItem] = []
+    aggregates: list[RecordsAggregateItem] = []
+
+
 # --- Notification ---
 
 

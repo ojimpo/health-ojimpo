@@ -77,3 +77,9 @@
 - Docker Compose で構築
 - 既存コンテナのポートと競合しないよう注意
 - Cloudflare Tunnel の設定は手動で行うのでアプリ側では不要
+
+## MCPサーバー連携（health-mcp）
+
+- `~/dev/health-mcp` — このアプリのデータを公開する読み取り専用MCPサーバー（claude.ai / Claude Code両対応）
+- `GET /api/records`（`backend/app/routers/records.py`）はhealth-mcp専用に追加した生データエンドポイント（activity_recordsの日付範囲取得 + week/month集計）
+- health-mcpは `/api/dashboard` `/api/settings/sources` `/api/ingest/status` `/api/records` に依存。これらのレスポンス形式やカテゴリ定義を変えたら health-mcp 側（`src/health.ts`）も確認すること
