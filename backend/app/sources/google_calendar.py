@@ -52,8 +52,9 @@ class GoogleCalendarAdapter(SourceAdapter):
             other = "gcal_live" if self.source_id == "gcal_private" else "gcal_private"
             token = await get_valid_token(other)
         if not token:
-            logger.warning("Google Calendar: no valid token")
-            return 0, 0
+            # (0,0)で正常終了するとingest_logがcompletedになり障害が埋もれる
+            # （2026-05-02〜07-08にトークン失効で2ヶ月無音停止した実績あり）
+            raise RuntimeError("Google OAuth token invalid or refresh failed — re-authorization required")
 
         if not from_date:
             from_date = (date.today() - timedelta(days=90)).isoformat()
@@ -74,17 +75,15 @@ class GoogleCalendarAdapter(SourceAdapter):
                 if page_token:
                     params["pageToken"] = page_token
 
-                try:
-                    resp = await client.get(
-                        f"{GCAL_API_BASE}/calendars/{self._calendar_id}/events",
-                        headers=headers,
-                        params=params,
-                    )
-                    resp.raise_for_status()
-                    data = resp.json()
-                except Exception:
-                    logger.exception("Failed to fetch Google Calendar events")
-                    break
+                # 取得失敗時に部分結果で続行すると、後段の「fetchに無いイベントの
+                # 削除」が窓内のイベントを誤って消すためraiseで中断する
+                resp = await client.get(
+                    f"{GCAL_API_BASE}/calendars/{self._calendar_id}/events",
+                    headers=headers,
+                    params=params,
+                )
+                resp.raise_for_status()
+                data = resp.json()
 
                 events = data.get("items", [])
                 all_events.extend(events)
@@ -138,18 +137,41 @@ class GoogleCalendarAdapter(SourceAdapter):
 
     async def aggregate(self) -> None:
         async with get_db_context() as db:
+            rows = await db.execute_fetchall(
+                "SELECT start_date, end_date FROM gcal_events WHERE source = ?",
+                (self.source_id,),
+            )
+
+            # 複数日イベント（旅行等）は期間中の各日に1件ずつ計上する。
+            # 終日イベントのend_dateはGoogle API上exclusiveなので1日引く。
+            # 時刻ありで日付をまたぐだけの予定（深夜解散等）は開始日のみになる
+            counts: dict[str, int] = {}
+            for start_s, end_s in rows:
+                try:
+                    start = date.fromisoformat(start_s)
+                    end = date.fromisoformat(end_s) if end_s else start
+                except ValueError:
+                    logger.warning("%s: skipping event with bad dates %r-%r", self.source_id, start_s, end_s)
+                    continue
+                last = max(start, end - timedelta(days=1))
+                # 誤登録された異常に長い予定でスコアが溢れないよう30日で打ち切り
+                last = min(last, start + timedelta(days=29))
+                d = start
+                while d <= last:
+                    key = d.isoformat()
+                    counts[key] = counts.get(key, 0) + 1
+                    d += timedelta(days=1)
+
             # Full rebuild: delete all existing records then re-insert from gcal_events
             await db.execute(
                 "DELETE FROM activity_records WHERE source = ?",
                 (self.source_id,),
             )
-            await db.execute(
+            await db.executemany(
                 """INSERT INTO activity_records
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
-                SELECT start_date, ?, ?, 0, COUNT(*), '回', NULL
-                FROM gcal_events WHERE source = ?
-                GROUP BY start_date""",
-                (self.source_id, self._category, self.source_id),
+                VALUES (?, ?, ?, 0, ?, '回', NULL)""",
+                [(d, self.source_id, self._category, c) for d, c in sorted(counts.items())],
             )
             await db.commit()
         logger.info("%s aggregation completed", self.source_id)
