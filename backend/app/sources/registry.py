@@ -12,6 +12,7 @@ def register_adapters():
     from .lastfm import LastfmAdapter
     from .kashidashi import KashidashiCDAdapter
     from .oura import OuraAdapter
+    from .oura_steps import OuraStepsAdapter
     from .intervals_icu import IntervalsAdapter
     from .strava import StravaAdapter
     from .google_calendar import GoogleCalendarAdapter
@@ -33,6 +34,7 @@ def register_adapters():
         LastfmAdapter(),
         KashidashiCDAdapter(),
         OuraAdapter(),
+        OuraStepsAdapter(),
         IntervalsAdapter(),
         StravaAdapter(),
         GoogleCalendarAdapter("gcal_private"),
