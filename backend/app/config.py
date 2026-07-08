@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     line_owner_user_id: str = ""
     # 主観フィードバック質問の送信時刻（UTC時。12 = 21:00 JST）
     subjective_push_hour_utc: int = 12
+    # 週次ソースヘルスレポート（本人LINEのみ）。曜日はcron形式、時刻はUTC時
+    health_report_weekday: str = "sun"
+    health_report_hour_utc: int = 12
 
     # Notification
     notification_enabled: bool = False

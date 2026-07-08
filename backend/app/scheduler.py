@@ -33,6 +33,18 @@ def _send_subjective_question():
         loop.close()
 
 
+def _send_source_health_report():
+    from .services.source_health import send_weekly_report
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(send_weekly_report())
+    except Exception:
+        logger.exception("Source health report send failed")
+    finally:
+        loop.close()
+
+
 def start_scheduler():
     global _scheduler
     _scheduler = BackgroundScheduler()
@@ -49,6 +61,15 @@ def start_scheduler():
         hour=settings.subjective_push_hour_utc,
         minute=0,
         id="subjective_daily_question",
+    )
+    # 週次ソースヘルスレポート。主観フィードバック質問(:00)と被らないよう:05
+    _scheduler.add_job(
+        _send_source_health_report,
+        "cron",
+        day_of_week=settings.health_report_weekday,
+        hour=settings.health_report_hour_utc,
+        minute=5,
+        id="source_health_weekly_report",
     )
     _scheduler.start()
     logger.info(

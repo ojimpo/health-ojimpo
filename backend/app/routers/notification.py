@@ -253,6 +253,24 @@ async def delete_subscriber(subscriber_id: int):
     return {"status": "deleted"}
 
 
+@router.get("/health-report")
+async def source_health_report_preview():
+    """週次ソースヘルスレポートのプレビュー（送信しない、admin用）。"""
+    from ..services.source_health import build_report, format_report
+
+    report = await build_report()
+    return {"text": format_report(report), "sources": report}
+
+
+@router.post("/health-report/send")
+async def source_health_report_send():
+    """週次ソースヘルスレポートを今すぐ本人LINEに送る（admin用）。"""
+    from ..services.source_health import send_weekly_report
+
+    sent = await send_weekly_report()
+    return {"status": "sent" if sent else "skipped"}
+
+
 # --- Helper ---
 
 
