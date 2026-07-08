@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     line_channel_secret: str = ""
     line_bot_basic_id: str = ""
     personal_line_url: str = ""
+    # 主観フィードバック質問の宛先（本人のLINE userId）。未設定なら送信しない
+    line_owner_user_id: str = ""
+    # 主観フィードバック質問の送信時刻（UTC時。12 = 21:00 JST）
+    subjective_push_hour_utc: int = 12
 
     # Notification
     notification_enabled: bool = False

@@ -21,6 +21,18 @@ def _run_all_ingest():
         loop.close()
 
 
+def _send_subjective_question():
+    from .services.subjective import send_daily_question
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(send_daily_question())
+    except Exception:
+        logger.exception("Subjective question send failed")
+    finally:
+        loop.close()
+
+
 def start_scheduler():
     global _scheduler
     _scheduler = BackgroundScheduler()
@@ -29,6 +41,14 @@ def start_scheduler():
         "interval",
         hours=settings.fetch_interval_hours,
         id="all_sources_ingest",
+    )
+    # コンテナはUTC。デフォルト12:00 UTC = 21:00 JST
+    _scheduler.add_job(
+        _send_subjective_question,
+        "cron",
+        hour=settings.subjective_push_hour_utc,
+        minute=0,
+        id="subjective_daily_question",
     )
     _scheduler.start()
     logger.info(

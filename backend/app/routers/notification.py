@@ -130,7 +130,10 @@ async def unsubscribe(subscriber_id: int):
 
 @router.post("/line/webhook")
 async def line_webhook(request: Request):
-    """Receive LINE Messaging API webhook events (follow/unfollow)."""
+    """Receive LINE Messaging API webhook events (follow/unfollow/postback).
+
+    postback は主観フィードバックの回答（services/subjective.py）。
+    """
     body = await request.body()
 
     # Verify signature
@@ -147,11 +150,17 @@ async def line_webhook(request: Request):
     data = json.loads(body)
     events = data.get("events", [])
 
+    postback_events = []
     async with get_db_context() as db:
         for event in events:
             event_type = event.get("type")
             user_id = event.get("source", {}).get("userId")
             if not user_id:
+                continue
+
+            if event_type == "postback":
+                # DBコンテキストの外で処理する（record_answerが自前でDBを開くため）
+                postback_events.append(event)
                 continue
 
             if event_type == "follow":
@@ -187,6 +196,14 @@ async def line_webhook(request: Request):
                 logger.info("LINE unfollow: %s", user_id[:8] + "...")
 
         await db.commit()
+
+    for event in postback_events:
+        try:
+            from ..services.subjective import handle_postback_event
+
+            await handle_postback_event(event)
+        except Exception:
+            logger.exception("LINE webhook: failed to handle postback")
 
     return {"status": "ok"}
 

@@ -53,6 +53,9 @@ services:
       - LINE_BOT_BASIC_ID=${LINE_BOT_BASIC_ID:-}
       - PERSONAL_LINE_URL=${PERSONAL_LINE_URL:-}
       - NOTIFICATION_ENABLED=${NOTIFICATION_ENABLED:-false}
+      # 主観フィードバック（本人のみに毎晩LINEで質問）
+      - LINE_OWNER_USER_ID=${LINE_OWNER_USER_ID:-}
+      - SUBJECTIVE_PUSH_HOUR_UTC=${SUBJECTIVE_PUSH_HOUR_UTC:-12}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s

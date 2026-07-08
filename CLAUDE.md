@@ -46,6 +46,8 @@
 - **集約方式**: ソース別スコア → カテゴリ内平均（カテゴリ=指標）→ 健康/文化スコア
   - 1指標に複数ソースがある場合（例: vitality = nextdns + stash）、ソースを増やしても重みは1カテゴリのまま
 - **健康指標**: baseline分類カテゴリの平均 → NORMAL/CAUTION/CRITICAL
+- **運動カテゴリは2ソース**: strava（意図的な運動）+ oura_steps（日常の歩数）。運動していなくても体が動いていれば健康スコアが落ちない誤検知対策（migration 038）
+- **主観フィードバック**: 毎晩12:00 UTC（21:00 JST）にLINEで本人にのみ3択質問（良い/普通/悪い）→ 既存の `/api/notification/line/webhook`（follow/unfollow購読と共用）でpostback受信 → `subjective_feedback` にスコアスナップショットと共に保存（migration 039）。スコア校正の正解データ蓄積用
 - **文化的指標**: display_type=activity/card_only カテゴリの平均 → RICH/MODERATE/LOW
 - 総合スコアを1つにまとめない。2軸で独立して表示
 
@@ -69,7 +71,7 @@
 
 - `backend/app/migrations/` に連番SQLファイル
 - init_db: duplicate column/already exists エラーを自動スキップ（冪等化）
-- 最新: 037
+- 最新: 039
 - **コード変更はリビルドが必要**: `docker compose build backend && docker compose up -d backend`
 
 ## デプロイ
