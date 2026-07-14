@@ -107,6 +107,17 @@ class StravaAdapter(SourceAdapter):
             # 2) strava_voluntary (exercise, minutes): non-commute activities — event bonus
             #    Voluntary exercise (rides, runs, swims, etc.) excluding commute.
             #    Double-counts with strava total; rewards self-initiated activity.
+            #    後からcommuteタグが付いて非通勤ゼロになった日はSELECTに現れず
+            #    古い行が残るため、先に消しておく
+            await db.execute(
+                """DELETE FROM activity_records
+                WHERE source = 'strava_voluntary'
+                AND date NOT IN (
+                    SELECT SUBSTR(start_date_local, 1, 10)
+                    FROM strava_activities
+                    WHERE NOT (activity_type = 'Ride' AND commute = 1)
+                )"""
+            )
             await db.execute(
                 """INSERT OR REPLACE INTO activity_records
                 (date, source, category, minutes, raw_value, raw_unit, metadata)
