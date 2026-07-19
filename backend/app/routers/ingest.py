@@ -9,7 +9,7 @@ from ..config import settings as app_settings
 from ..database import get_db_context
 from ..models.schemas import IngestStatusResponse, IngestTrigger
 from ..scheduler import get_next_run_time
-from ..services.ingest import run_ingest_pipeline
+from ..services.ingest import run_all_ingest, run_ingest_pipeline
 from ..sources.registry import get_adapter
 
 logger = logging.getLogger(__name__)
@@ -75,9 +75,18 @@ async def _store_one(source: str, date_str: str, minutes: float) -> dict:
 @router.post(
     "/trigger",
     summary="データ取得手動トリガー",
-    description="指定ソースからデータを手動取得する。from_dateで開始日を指定可能。",
+    description="指定ソース（source='all'で全ソース）からデータを手動取得する。from_dateで開始日を指定可能。Bearer認証。",
 )
-async def trigger_ingest(body: IngestTrigger):
+async def trigger_ingest(
+    body: IngestTrigger,
+    authorization: str | None = Header(default=None),
+):
+    _verify_webhook_token(authorization)
+
+    if body.source == "all":
+        asyncio.create_task(run_all_ingest())
+        return {"status": "started", "source": "all"}
+
     adapter = get_adapter(body.source)
     if not adapter:
         raise HTTPException(400, f"Unknown source: {body.source}")

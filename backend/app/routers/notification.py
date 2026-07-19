@@ -130,9 +130,11 @@ async def unsubscribe(subscriber_id: int):
 
 @router.post("/line/webhook")
 async def line_webhook(request: Request):
-    """Receive LINE Messaging API webhook events (follow/unfollow/postback).
+    """Receive LINE Messaging API webhook events (follow/unfollow/postback/message).
 
-    postback は主観フィードバックの回答（services/subjective.py）。
+    postback は主観フィードバックの回答（sf:、services/subjective.py）と
+    手動ingestトリガー（ingest:、services/manual_ingest.py）。
+    テキスト「ingest」も手動ingestトリガーとして扱う（いずれも本人のみ）。
     """
     body = await request.body()
 
@@ -150,7 +152,7 @@ async def line_webhook(request: Request):
     data = json.loads(body)
     events = data.get("events", [])
 
-    postback_events = []
+    deferred_events = []
     async with get_db_context() as db:
         for event in events:
             event_type = event.get("type")
@@ -160,7 +162,15 @@ async def line_webhook(request: Request):
 
             if event_type == "postback":
                 # DBコンテキストの外で処理する（record_answerが自前でDBを開くため）
-                postback_events.append(event)
+                deferred_events.append(event)
+                continue
+
+            if event_type == "message":
+                from ..services.manual_ingest import is_ingest_command
+
+                text = (event.get("message") or {}).get("text", "")
+                if (event.get("message") or {}).get("type") == "text" and is_ingest_command(text):
+                    deferred_events.append(event)
                 continue
 
             if event_type == "follow":
@@ -197,13 +207,18 @@ async def line_webhook(request: Request):
 
         await db.commit()
 
-    for event in postback_events:
+    for event in deferred_events:
         try:
+            from ..services import manual_ingest
             from ..services.subjective import handle_postback_event
 
-            await handle_postback_event(event)
+            data = (event.get("postback") or {}).get("data", "")
+            if event.get("type") == "message" or data.startswith(manual_ingest.POSTBACK_PREFIX):
+                await manual_ingest.handle_ingest_event(event)
+            else:
+                await handle_postback_event(event)
         except Exception:
-            logger.exception("LINE webhook: failed to handle postback")
+            logger.exception("LINE webhook: failed to handle event")
 
     return {"status": "ok"}
 
