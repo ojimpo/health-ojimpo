@@ -67,6 +67,7 @@ CATEGORY_LABELS = {
     "game": "ゲーム",
     "like": "Like",
     "study": "勉強",
+    "photo": "写真",
 }
 
 def _get_range_params(time_range: TimeRange) -> tuple[int, str]:

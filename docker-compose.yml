@@ -44,6 +44,10 @@ services:
       # Steam Web API
       - STEAM_API_KEY=${STEAM_API_KEY:-}
       - STEAM_ID64=${STEAM_ID64:-}
+      # 写真 (Immich + photo-genka)
+      - IMMICH_API_URL=${IMMICH_API_URL:-http://172.17.0.1:2283}
+      - IMMICH_API_KEY=${IMMICH_API_KEY:-}
+      - PHOTO_GENKA_API_URL=${PHOTO_GENKA_API_URL:-http://172.17.0.1:8403}
       # Duolingo (公開プロフィールAPI, 認証不要)
       - DUOLINGO_USER_ID=${DUOLINGO_USER_ID:-}
       - DUOLINGO_XP_PER_MINUTE=${DUOLINGO_XP_PER_MINUTE:-3.0}

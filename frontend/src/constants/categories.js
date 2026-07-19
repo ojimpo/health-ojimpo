@@ -15,6 +15,7 @@ export const activityCategories = [
   { key: 'game', label: 'ゲーム', color: '#66C0F4' },        // Steam blue
   { key: 'like', label: 'Like', color: '#E0245E' },         // Spotify Saved Tracks (like red)
   { key: 'study', label: '勉強', color: '#5C6BC0' },         // Studyplus + Duolingo (indigo)
+  { key: 'photo', label: '写真', color: '#2DD4BF' },         // Immich + photo-genka (teal)
 ]
 
 export const stateCategories = [

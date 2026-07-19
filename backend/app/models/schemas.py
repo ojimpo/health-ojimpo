@@ -11,7 +11,7 @@ from .enums import CulturalStatus, HealthStatus
 ACTIVITY_CATEGORIES = [
     "music", "exercise", "reading", "movie", "sns", "coding", "calendar",
     "live", "shopping", "vitality", "outing_activity", "cd", "podcast",
-    "game", "like", "study",
+    "game", "like", "study", "photo",
 ]
 STATE_CATEGORIES = ["sleep", "readiness", "stress", "weight", "outing", "ctl"]
 

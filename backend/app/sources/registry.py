@@ -29,6 +29,7 @@ def register_adapters():
     from .spotify_saved_tracks import SpotifySavedTracksAdapter
     from .steam import SteamAdapter
     from .duolingo import DuolingoAdapter
+    from .photos import ImmichPhotosAdapter, PhotoGenkaAdapter
 
     adapters = [
         LastfmAdapter(),
@@ -54,6 +55,8 @@ def register_adapters():
         SpotifySavedTracksAdapter(),
         SteamAdapter(),
         DuolingoAdapter(),
+        ImmichPhotosAdapter(),
+        PhotoGenkaAdapter(),
     ]
     for adapter in adapters:
         SOURCE_ADAPTERS[adapter.source_id] = adapter

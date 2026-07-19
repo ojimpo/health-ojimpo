@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     steam_api_key: str = ""
     steam_id64: str = ""
 
+    # 写真 — Immich (iPhone撮影分) + photo-genka (X-E5撮影分)
+    immich_api_url: str = ""  # 例: http://172.17.0.1:2283
+    immich_api_key: str = ""  # 最小権限キー（asset.statistics 相当の検索のみ）
+    photo_genka_api_url: str = ""  # 例: http://172.17.0.1:8403
+
     # Duolingo (公開プロフィールAPI) — 語学学習。username または数値IDのみで認証不要。
     duolingo_user_id: str = ""  # Duolingo のユーザー名 or 数値ID
     # 公開APIに学習時間が無いため、totalXp の日次差分(=その日のXP)を時間に近似する換算係数
