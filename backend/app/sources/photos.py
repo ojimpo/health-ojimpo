@@ -98,7 +98,7 @@ class ImmichPhotosAdapter(SourceAdapter):
 
 class PhotoGenkaAdapter(SourceAdapter):
     source_id = "photo_genka"
-    display_name = "写真 (X-E5)"
+    display_name = "カメラ (X-E5)"
 
     async def is_configured(self) -> bool:
         return bool(settings.photo_genka_api_url)
