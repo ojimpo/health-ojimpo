@@ -25,11 +25,25 @@ function QrPlaceholder() {
   )
 }
 
+const MCP_URL = 'https://health-mcp.ojimpo.com/mcp'
+const MCP_REPO_URL = 'https://github.com/ojimpo/health-mcp'
+
 export default function NotificationSubscribe() {
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState(null)
   const [lineInfo, setLineInfo] = useState(null)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(MCP_URL)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // クリップボード非対応環境では何もしない（URLは選択コピー可能）
+    }
+  }
 
   useEffect(() => {
     fetch('/api/notification/line/info')
@@ -56,8 +70,8 @@ export default function NotificationSubscribe() {
 
   return (
     <div className={styles.section}>
-      <div className={styles.header}>NOTIFICATIONS</div>
-      <div className={styles.subtitle}>コンディション低下時に通知を受け取れます</div>
+      <div className={styles.header}>SUPPORT</div>
+      <div className={styles.subtitle}>通知の購読やAI連携で、本人の健康監視に参加できます</div>
 
       <div className={styles.cards}>
         {/* LINE */}
@@ -131,6 +145,31 @@ export default function NotificationSubscribe() {
               )}
             </>
           )}
+        </div>
+
+        {/* MCP */}
+        <div className={styles.card}>
+          <div className={`${styles.cardLabel} ${styles.mcpLabelColor}`}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22v-5" />
+              <path d="M9 8V2" />
+              <path d="M15 8V2" />
+              <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z" />
+            </svg>
+            MCP
+          </div>
+          <div className={styles.mcpInfo}>
+            Claudeのコネクタに追加すると、会話でこのダッシュボードのデータを参照できます
+          </div>
+          <div className={styles.mcpUrlRow}>
+            <code className={styles.mcpUrl}>{MCP_URL}</code>
+            <button type="button" className={styles.mcpCopyBtn} onClick={handleCopy}>
+              {copied ? 'COPIED' : 'COPY'}
+            </button>
+          </div>
+          <a href={MCP_REPO_URL} target="_blank" rel="noopener noreferrer" className={styles.mcpRepoLink}>
+            GitHub → ojimpo/health-mcp
+          </a>
         </div>
       </div>
     </div>

@@ -19,8 +19,14 @@
 
 .cards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
+}
+
+@media (max-width: 1000px) {
+  .cards {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -184,4 +190,69 @@
   font-size: 10px;
   color: var(--pink);
   margin-top: 10px;
+}
+
+.mcpLabelColor {
+  color: #D97757;
+}
+
+.mcpInfo {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-subtle);
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.mcpUrlRow {
+  display: flex;
+  gap: 8px;
+}
+
+.mcpUrl {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.mcpCopyBtn {
+  background: rgba(217, 119, 87, 0.08);
+  border: 1px solid rgba(217, 119, 87, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-family: var(--font-heading);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #D97757;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.mcpCopyBtn:hover {
+  background: rgba(217, 119, 87, 0.14);
+  border-color: rgba(217, 119, 87, 0.4);
+}
+
+.mcpRepoLink {
+  display: inline-block;
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.mcpRepoLink:hover {
+  color: #D97757;
 }
