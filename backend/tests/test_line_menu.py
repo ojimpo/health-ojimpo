@@ -1,4 +1,4 @@
-"""Tests for LINE-triggered manual ingest + /api/ingest/trigger auth."""
+"""Tests for LINE rich menu commands (ingest/health/subjective) + /api/ingest/trigger auth."""
 import asyncio
 import base64
 import hashlib
@@ -13,7 +13,7 @@ from app import database
 from app.config import settings
 from app.routers import ingest as ingest_router
 from app.routers import notification
-from app.services import manual_ingest
+from app.services import line_menu
 
 OWNER = "U" + "a" * 32
 SECRET = "test-channel-secret"
@@ -38,7 +38,7 @@ def _client() -> httpx.AsyncClient:
 def line_settings(monkeypatch):
     monkeypatch.setattr(settings, "line_channel_secret", SECRET)
     monkeypatch.setattr(settings, "line_owner_user_id", OWNER)
-    manual_ingest._running = False
+    line_menu._running = False
 
 
 @pytest.fixture
@@ -52,12 +52,12 @@ def line_calls(monkeypatch):
     async def fake_push(user_id, message):
         calls["push"].append((user_id, message))
 
-    monkeypatch.setattr(manual_ingest, "reply_line_message", fake_reply)
-    monkeypatch.setattr(manual_ingest, "send_line_notification", fake_push)
+    monkeypatch.setattr(line_menu, "reply_line_message", fake_reply)
+    monkeypatch.setattr(line_menu, "send_line_notification", fake_push)
     return calls
 
 
-def _event(user_id=OWNER, data=manual_ingest.POSTBACK_RUN, reply_token="rt"):
+def _event(user_id=OWNER, data=line_menu.POSTBACK_RUN, reply_token="rt"):
     return {
         "type": "postback",
         "source": {"userId": user_id},
@@ -73,7 +73,7 @@ async def _drain_tasks():
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-# --- handle_ingest_event ---
+# --- handle_command_event: ingest ---
 
 
 async def test_non_owner_ignored(test_db, line_calls, monkeypatch):
@@ -82,12 +82,12 @@ async def test_non_owner_ignored(test_db, line_calls, monkeypatch):
     async def fake_run():
         ran.append(True)
 
-    monkeypatch.setattr(manual_ingest, "_run_and_report", fake_run)
-    await manual_ingest.handle_ingest_event(_event(user_id="U" + "b" * 32))
+    monkeypatch.setattr(line_menu, "_run_and_report", fake_run)
+    await line_menu.handle_command_event(_event(user_id="U" + "b" * 32))
     await _drain_tasks()
     assert ran == []
     assert line_calls["reply"] == []
-    assert manual_ingest._running is False
+    assert line_menu._running is False
 
 
 async def test_unknown_postback_data_ignored(test_db, line_calls, monkeypatch):
@@ -96,11 +96,11 @@ async def test_unknown_postback_data_ignored(test_db, line_calls, monkeypatch):
     async def fake_run():
         ran.append(True)
 
-    monkeypatch.setattr(manual_ingest, "_run_and_report", fake_run)
-    await manual_ingest.handle_ingest_event(_event(data="ingest:doom"))
+    monkeypatch.setattr(line_menu, "_run_and_report", fake_run)
+    await line_menu.handle_command_event(_event(data="ingest:doom"))
     await _drain_tasks()
     assert ran == []
-    assert manual_ingest._running is False
+    assert line_menu._running is False
 
 
 async def test_owner_postback_starts_run(test_db, line_calls, monkeypatch):
@@ -108,11 +108,11 @@ async def test_owner_postback_starts_run(test_db, line_calls, monkeypatch):
 
     async def fake_run():
         ran.append(True)
-        manual_ingest._running = False
+        line_menu._running = False
 
-    monkeypatch.setattr(manual_ingest, "_run_and_report", fake_run)
-    await manual_ingest.handle_ingest_event(_event())
-    assert manual_ingest._running is True
+    monkeypatch.setattr(line_menu, "_run_and_report", fake_run)
+    await line_menu.handle_command_event(_event())
+    assert line_menu._running is True
     await _drain_tasks()
     assert ran == [True]
     assert len(line_calls["reply"]) == 1
@@ -125,13 +125,70 @@ async def test_second_trigger_while_running_is_rejected(test_db, line_calls, mon
     async def fake_run():
         ran.append(True)
 
-    monkeypatch.setattr(manual_ingest, "_run_and_report", fake_run)
-    manual_ingest._running = True
-    await manual_ingest.handle_ingest_event(_event())
+    monkeypatch.setattr(line_menu, "_run_and_report", fake_run)
+    line_menu._running = True
+    await line_menu.handle_command_event(_event())
     await _drain_tasks()
     assert ran == []
     assert len(line_calls["reply"]) == 1
     assert "実行中" in line_calls["reply"][0]
+
+
+# --- handle_command_event: health / subjective ---
+
+
+async def test_menu_health_sends_report(test_db, line_calls, monkeypatch):
+    sent = []
+
+    async def fake_report():
+        sent.append(True)
+
+    monkeypatch.setattr("app.services.source_health.send_weekly_report", fake_report)
+    await line_menu.handle_command_event(_event(data=line_menu.MENU_HEALTH))
+    await _drain_tasks()
+    assert sent == [True]
+    assert len(line_calls["reply"]) == 1
+    assert "ヘルスチェック中" in line_calls["reply"][0]
+
+
+async def test_menu_health_failure_notifies(test_db, line_calls, monkeypatch):
+    async def fake_report():
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("app.services.source_health.send_weekly_report", fake_report)
+    await line_menu.handle_command_event(_event(data=line_menu.MENU_HEALTH))
+    await _drain_tasks()
+    assert len(line_calls["push"]) == 1
+    assert "エラー" in line_calls["push"][0][1]
+
+
+async def test_menu_subjective_sends_question(test_db, line_calls, monkeypatch):
+    asked = []
+
+    async def fake_ask():
+        asked.append(True)
+        return True
+
+    monkeypatch.setattr("app.services.subjective.send_daily_question", fake_ask)
+    await line_menu.handle_command_event(_event(data=line_menu.MENU_SUBJECTIVE))
+    await _drain_tasks()
+    assert asked == [True]
+
+
+async def test_menu_commands_ignored_for_non_owner(test_db, line_calls, monkeypatch):
+    called = []
+
+    async def fake(*args):
+        called.append(True)
+        return True
+
+    monkeypatch.setattr("app.services.source_health.send_weekly_report", fake)
+    monkeypatch.setattr("app.services.subjective.send_daily_question", fake)
+    other = "U" + "b" * 32
+    await line_menu.handle_command_event(_event(user_id=other, data=line_menu.MENU_HEALTH))
+    await line_menu.handle_command_event(_event(user_id=other, data=line_menu.MENU_SUBJECTIVE))
+    await _drain_tasks()
+    assert called == []
 
 
 # --- _run_and_report ---
@@ -151,10 +208,10 @@ async def test_run_and_report_pushes_summary(test_db, line_calls, monkeypatch):
             await db.commit()
 
     monkeypatch.setattr("app.services.ingest.run_all_ingest", fake_run_all)
-    manual_ingest._running = True
-    await manual_ingest._run_and_report()
+    line_menu._running = True
+    await line_menu._run_and_report()
 
-    assert manual_ingest._running is False
+    assert line_menu._running is False
     assert len(line_calls["push"]) == 1
     user_id, message = line_calls["push"][0]
     assert user_id == OWNER
@@ -167,10 +224,10 @@ async def test_run_and_report_notifies_on_crash(test_db, line_calls, monkeypatch
         raise RuntimeError("boom")
 
     monkeypatch.setattr("app.services.ingest.run_all_ingest", fake_run_all)
-    manual_ingest._running = True
-    await manual_ingest._run_and_report()
+    line_menu._running = True
+    await line_menu._run_and_report()
 
-    assert manual_ingest._running is False
+    assert line_menu._running is False
     assert len(line_calls["push"]) == 1
     assert "エラー" in line_calls["push"][0][1]
 
@@ -178,20 +235,21 @@ async def test_run_and_report_notifies_on_crash(test_db, line_calls, monkeypatch
 # --- webhook routing ---
 
 
-async def test_webhook_routes_ingest_postback(test_db, monkeypatch):
+async def test_webhook_routes_menu_postbacks(test_db, monkeypatch):
     handled = []
 
     async def fake_handler(event):
         handled.append(event["postback"]["data"])
 
-    monkeypatch.setattr(manual_ingest, "handle_ingest_event", fake_handler)
-    body = json.dumps({"events": [_event()]}).encode()
-    async with _client() as client:
-        resp = await client.post(
-            WEBHOOK_PATH, content=body, headers={"X-Line-Signature": _sign(body)}
-        )
-    assert resp.status_code == 200
-    assert handled == [manual_ingest.POSTBACK_RUN]
+    monkeypatch.setattr(line_menu, "handle_command_event", fake_handler)
+    for data in (line_menu.POSTBACK_RUN, line_menu.MENU_HEALTH, line_menu.MENU_SUBJECTIVE):
+        body = json.dumps({"events": [_event(data=data)]}).encode()
+        async with _client() as client:
+            resp = await client.post(
+                WEBHOOK_PATH, content=body, headers={"X-Line-Signature": _sign(body)}
+            )
+        assert resp.status_code == 200
+    assert handled == [line_menu.POSTBACK_RUN, line_menu.MENU_HEALTH, line_menu.MENU_SUBJECTIVE]
 
 
 async def test_webhook_routes_ingest_text_message(test_db, monkeypatch):
@@ -200,7 +258,7 @@ async def test_webhook_routes_ingest_text_message(test_db, monkeypatch):
     async def fake_handler(event):
         handled.append(event["message"]["text"])
 
-    monkeypatch.setattr(manual_ingest, "handle_ingest_event", fake_handler)
+    monkeypatch.setattr(line_menu, "handle_command_event", fake_handler)
     body = json.dumps({
         "events": [{
             "type": "message",
@@ -223,7 +281,7 @@ async def test_webhook_ignores_other_text_messages(test_db, monkeypatch):
     async def fake_handler(event):
         handled.append(event)
 
-    monkeypatch.setattr(manual_ingest, "handle_ingest_event", fake_handler)
+    monkeypatch.setattr(line_menu, "handle_command_event", fake_handler)
     body = json.dumps({
         "events": [{
             "type": "message",
@@ -241,16 +299,16 @@ async def test_webhook_ignores_other_text_messages(test_db, monkeypatch):
 
 async def test_webhook_still_routes_subjective_postback(test_db, monkeypatch):
     sf_handled = []
-    ingest_handled = []
+    menu_handled = []
 
     async def fake_sf(event):
         sf_handled.append(event)
 
-    async def fake_ingest(event):
-        ingest_handled.append(event)
+    async def fake_menu(event):
+        menu_handled.append(event)
 
     monkeypatch.setattr("app.services.subjective.handle_postback_event", fake_sf)
-    monkeypatch.setattr(manual_ingest, "handle_ingest_event", fake_ingest)
+    monkeypatch.setattr(line_menu, "handle_command_event", fake_menu)
     body = json.dumps({"events": [_event(data="sf:good:2026-07-19")]}).encode()
     async with _client() as client:
         resp = await client.post(
@@ -258,7 +316,7 @@ async def test_webhook_still_routes_subjective_postback(test_db, monkeypatch):
         )
     assert resp.status_code == 200
     assert len(sf_handled) == 1
-    assert ingest_handled == []
+    assert menu_handled == []
 
 
 # --- /api/ingest/trigger auth ---

@@ -133,7 +133,7 @@ async def line_webhook(request: Request):
     """Receive LINE Messaging API webhook events (follow/unfollow/postback/message).
 
     postback は主観フィードバックの回答（sf:、services/subjective.py）と
-    手動ingestトリガー（ingest:、services/manual_ingest.py）。
+    リッチメニューコマンド（ingest:/menu:、services/line_menu.py）。
     テキスト「ingest」も手動ingestトリガーとして扱う（いずれも本人のみ）。
     """
     body = await request.body()
@@ -166,7 +166,7 @@ async def line_webhook(request: Request):
                 continue
 
             if event_type == "message":
-                from ..services.manual_ingest import is_ingest_command
+                from ..services.line_menu import is_ingest_command
 
                 text = (event.get("message") or {}).get("text", "")
                 if (event.get("message") or {}).get("type") == "text" and is_ingest_command(text):
@@ -209,12 +209,12 @@ async def line_webhook(request: Request):
 
     for event in deferred_events:
         try:
-            from ..services import manual_ingest
+            from ..services import line_menu
             from ..services.subjective import handle_postback_event
 
             data = (event.get("postback") or {}).get("data", "")
-            if event.get("type") == "message" or data.startswith(manual_ingest.POSTBACK_PREFIX):
-                await manual_ingest.handle_ingest_event(event)
+            if event.get("type") == "message" or data.startswith(line_menu.POSTBACK_PREFIXES):
+                await line_menu.handle_command_event(event)
             else:
                 await handle_postback_event(event)
         except Exception:

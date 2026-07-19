@@ -1,7 +1,10 @@
-"""LINEからの手動ingestトリガー。
+"""LINEリッチメニュー/テキストコマンドによる手動トリガー（本人のみ）。
 
-リッチメニューのpostback（ingest:run）またはテキスト「ingest」で、
-全ソースの取り込み+スコア再計算をバックグラウンド実行し、完了サマリをpushで返す。
+- ingest:run（またはテキスト「ingest」）: 全ソース取り込み+スコア再計算をバックグラウンド実行し、
+  完了サマリをpushで返す
+- menu:health: ソースヘルスレポートを即時作成してpush（週次レポートと同じ内容）
+- menu:subjective: 主観フィードバックの3択質問を即時push（毎晩21時と同じもの）
+
 LINE_OWNER_USER_ID 以外のuserIdは無視する（webhook自体は署名検証済み）。
 """
 import asyncio
@@ -14,8 +17,10 @@ from .line_notify import reply_line_message, send_line_notification
 
 logger = logging.getLogger(__name__)
 
-POSTBACK_PREFIX = "ingest:"
+POSTBACK_PREFIXES = ("ingest:", "menu:")
 POSTBACK_RUN = "ingest:run"
+MENU_HEALTH = "menu:health"
+MENU_SUBJECTIVE = "menu:subjective"
 MESSAGE_COMMANDS = {"ingest"}
 
 _running = False
@@ -25,20 +30,31 @@ def is_ingest_command(text: str) -> bool:
     return text.strip().lower() in MESSAGE_COMMANDS
 
 
-async def handle_ingest_event(event: dict) -> None:
-    """postback(ingest:run) またはテキストコマンドから全ソースingestを起動する。"""
-    global _running
+async def handle_command_event(event: dict) -> None:
+    """リッチメニューのpostback/テキストコマンドをディスパッチする。"""
     user_id = (event.get("source") or {}).get("userId", "")
     if not user_id or user_id != settings.line_owner_user_id:
-        logger.info("Manual ingest: event from non-owner ignored")
+        logger.info("LINE menu: event from non-owner ignored")
         return
 
     data = (event.get("postback") or {}).get("data")
-    if data is not None and data != POSTBACK_RUN:
-        logger.info("Manual ingest: unknown postback data ignored: %s", data[:50])
-        return
+    if data is None or data == POSTBACK_RUN:
+        await _start_ingest(event.get("replyToken"))
+    elif data == MENU_HEALTH:
+        await _start_health_report(event.get("replyToken"))
+    elif data == MENU_SUBJECTIVE:
+        from .subjective import send_daily_question
 
-    reply_token = event.get("replyToken")
+        await send_daily_question()
+    else:
+        logger.info("LINE menu: unknown postback data ignored: %s", data[:50])
+
+
+# --- ingest ---
+
+
+async def _start_ingest(reply_token: str | None) -> None:
+    global _running
     if _running:
         if reply_token:
             await reply_line_message(reply_token, "⏳ ingest実行中です。完了通知を待ってください")
@@ -49,7 +65,7 @@ async def handle_ingest_event(event: dict) -> None:
         try:
             await reply_line_message(reply_token, "▶ 全ソースのingestを開始しました。完了したら通知します")
         except Exception:
-            logger.exception("Manual ingest: reply failed")
+            logger.exception("LINE menu: ingest reply failed")
     asyncio.create_task(_run_and_report())
 
 
@@ -88,3 +104,32 @@ async def _build_summary(started_at: str) -> str:
     if failed:
         lines.append(f"⚠ 失敗: {', '.join(failed)}")
     return "\n".join(lines)
+
+
+# --- source health report ---
+
+
+async def _start_health_report(reply_token: str | None) -> None:
+    """OAuthトークンの実refreshを含み数十秒かかりうるのでバックグラウンドで実行する。"""
+    if reply_token:
+        try:
+            await reply_line_message(reply_token, "🩺 ヘルスチェック中です。結果を送ります")
+        except Exception:
+            logger.exception("LINE menu: health reply failed")
+    asyncio.create_task(_health_report_task())
+
+
+async def _health_report_task() -> None:
+    try:
+        from .source_health import send_weekly_report
+
+        await send_weekly_report()
+    except Exception:
+        logger.exception("LINE menu: health report failed")
+        try:
+            await send_line_notification(
+                settings.line_owner_user_id,
+                "⚠ ヘルスレポートの作成中にエラーが発生しました。ログを確認してください",
+            )
+        except Exception:
+            logger.exception("LINE menu: health failure notification failed")
