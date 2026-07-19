@@ -105,8 +105,13 @@ class PhotoGenkaAdapter(SourceAdapter):
 
     async def fetch_and_store(self, from_date: str | None = None) -> tuple[int, int]:
         base_url = settings.photo_genka_api_url.rstrip("/")
-        params = {"since": from_date} if from_date else {}
-        async with httpx.AsyncClient(timeout=15) as client:
+        # fresh=1: photo-genka側で今日のスナップショットを取り直してから返す
+        # （最新アセットに変化がなければメタデータ検索1回だけの軽い処理）
+        params: dict[str, str] = {"fresh": "1"}
+        if from_date:
+            params["since"] = from_date
+        # fresh時はphoto-genka側でオリジナル1枚のダウンロードが入ることがあるので長め
+        async with httpx.AsyncClient(timeout=90) as client:
             resp = await client.get(f"{base_url}/api/daily-shots", params=params)
             resp.raise_for_status()
             rows = resp.json()
