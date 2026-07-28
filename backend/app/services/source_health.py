@@ -16,6 +16,7 @@ from datetime import date
 
 from ..config import settings
 from ..database import get_db_context
+from ..sources import strava as strava_source
 from .line_notify import send_line_notification
 from .oauth import get_valid_token
 
@@ -29,11 +30,25 @@ STALE_DAYS_EVENT = 45
 RECORD_SOURCE_PREFIXES = {"strava": "strava_"}
 
 
-async def build_report(today: date | None = None, token_checker=get_valid_token) -> list[dict]:
+async def _check_token(source_id: str):
+    """トークンの生存確認。
+
+    strava だけは別扱い: このアプリは strava-autopilot と同じ Strava client を
+    共有しており、両者が独立にリフレッシュすると **リフレッシュトークンの
+    ローテーションで片方が無効化されうる**。ヘルスチェックは get_valid_token を
+    副作用込み（＝期限切れならリフレッシュ）で呼ぶので、ここで踏むと壊す。
+    ゲートウェイ設定時はゲートウェイに聞く（更新はあちら側で一元管理）。
+    """
+    if source_id == "strava" and strava_source._gateway_configured():
+        return await strava_source._get_access_token()
+    return await get_valid_token(source_id)
+
+
+async def build_report(today: date | None = None, token_checker=_check_token) -> list[dict]:
     """全アクティブソースの健全性を評価したリストを返す（brokenが先頭）。
 
-    token_checkerはテスト用に差し替え可能。既定はOAuthリフレッシュを実際に
-    試みるget_valid_token（副作用としてトークンが更新されるが害はない）。
+    token_checkerはテスト用に差し替え可能。既定は_check_token（OAuthリフレッシュを
+    実際に試みる。ただしstravaはゲートウェイに委譲する。上の_check_token参照）。
     """
     if today is None:
         today = date.today()

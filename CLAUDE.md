@@ -88,3 +88,27 @@
 - `~/dev/health-mcp` — このアプリのデータを公開する読み取り専用MCPサーバー（claude.ai / Claude Code両対応）
 - `GET /api/records`（`backend/app/routers/records.py`）はhealth-mcp専用に追加した生データエンドポイント（activity_recordsの日付範囲取得 + week/month集計）
 - health-mcpは `/api/dashboard` `/api/settings/sources` `/api/ingest/status` `/api/records` に依存。これらのレスポンス形式やカテゴリ定義を変えたら health-mcp 側（`src/health.ts`）も確認すること
+
+## Strava のトークンは strava-autopilot（ゲートウェイ）に一元化 (2026-07-28)
+
+このアプリと `strava-autopilot` は **同じ Strava API アプリ**（`STRAVA_CLIENT_ID/SECRET` が同一値）を共有している。
+Strava は 1 アカウントにつき API アプリ 1 個で、さらに 2026-06 以降は API 利用に Strava サブスクが必要なので、
+アプリごとに登録を分けることができない。
+
+問題は**トークンのリフレッシュ**だった。両者が別々に `oauth_tokens` を持ち独立にリフレッシュすると、
+Strava のリフレッシュトークンのローテーションで**片方が無効化されうる**（実際、両 DB のトークンは
+`expires_at` が秒まで一致＝同じトークンをコピーして共有している状態だった）。
+
+そこで **トークンの更新は strava-autopilot だけが行う**ことにし、こちらは都度もらうだけにした。
+
+- `.env`: `STRAVA_GATEWAY_URL`（既定 `https://strava.ojimpo.com`）と `STRAVA_GATEWAY_API_KEY`
+  （autopilot 側 `.env` の `GATEWAY_API_KEY` と同じ値）。
+- `sources/strava.py` の `_get_access_token()` が `GET /api/gateway/token` からアクセストークンを取る。
+  **ゲートウェイ未設定なら従来どおりローカルの `oauth_tokens` を使う**（後方互換。設定を消せば元の挙動に戻る）。
+- `services/source_health.py` の `_check_token()` も strava だけゲートウェイに委譲する。
+  ここは `get_valid_token` を副作用込み（期限切れならリフレッシュ）で呼ぶので、塞がないとヘルスチェックが
+  トークンをローテーションさせてしまう。
+- `is_configured()` はゲートウェイ設定済みなら True（ローカルトークンが無くても「設定済み」）。
+- **注意**: `/api/oauth/strava/...` の再認可フローはコード上まだ残っている。ここから再認可すると
+  新しい認可が発行されて系統が枝分かれし、autopilot 側を壊しうる。**Strava の再認可は autopilot 側で行うこと。**
+- DB に残っている古い `oauth_tokens` の strava 行は、もう誰も更新しないので放置で構わない（参照もされない）。

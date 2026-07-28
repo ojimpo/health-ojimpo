@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import httpx
 
+from ..config import settings
 from ..database import get_db_context
 from ..services.oauth import get_valid_token, has_token
 from .base import SourceAdapter, format_relative_day
@@ -12,15 +13,44 @@ logger = logging.getLogger(__name__)
 STRAVA_API_BASE = "https://www.strava.com/api/v3"
 
 
+def _gateway_configured() -> bool:
+    return bool(settings.strava_gateway_url and settings.strava_gateway_api_key)
+
+
+async def _get_access_token() -> str | None:
+    """Strava のアクセストークンを取得する。
+
+    Strava は 1 アカウント 1 API アプリで、このアプリは strava-autopilot と
+    同じ client を共有している。両者が独立にトークンをリフレッシュすると、
+    リフレッシュトークンのローテーションで **片方が無効化されうる**。
+    そこでトークンの更新は autopilot（ゲートウェイ）に一本化し、ここは
+    都度もらうだけにする。ゲートウェイ未設定なら従来どおりローカルの
+    トークンを使う（後方互換）。
+    """
+    if not _gateway_configured():
+        return await get_valid_token("strava")
+    url = settings.strava_gateway_url.rstrip("/") + "/api/gateway/token"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                url, headers={"X-API-Key": settings.strava_gateway_api_key}
+            )
+            resp.raise_for_status()
+            return resp.json().get("access_token")
+    except Exception:
+        logger.exception("Failed to get Strava token from gateway (%s)", url)
+        return None
+
+
 class StravaAdapter(SourceAdapter):
     source_id = "strava"
     display_name = "Strava"
 
     async def is_configured(self) -> bool:
-        return await has_token("strava")
+        return _gateway_configured() or await has_token("strava")
 
     async def fetch_and_store(self, from_date: str | None = None) -> tuple[int, int]:
-        token = await get_valid_token("strava")
+        token = await _get_access_token()
         if not token:
             logger.warning("Strava: no valid token")
             return 0, 0

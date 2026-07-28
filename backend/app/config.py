@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     openai_admin_api_key: str = ""
 
     # Phase 2 - OAuth2 client credentials (tokens stored in DB)
+    # Strava は strava-autopilot（ゲートウェイ）がトークンを一元管理する。
+    # ここが設定されていれば、自前でトークンを持たずゲートウェイから受け取る。
+    strava_gateway_url: str = ""
+    strava_gateway_api_key: str = ""
     strava_client_id: str = ""
     strava_client_secret: str = ""
     google_client_id: str = ""
