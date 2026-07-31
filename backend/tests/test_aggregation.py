@@ -53,6 +53,15 @@ def test_point_status_empty_is_none():
     assert (h, c, hs, cs) == (None, None, None, None)
 
 
+def test_point_status_caps_category_scores():
+    # A bursty category counts as at most CATEGORY_SCORE_CAP (200) on both axes.
+    h, c, hs, cs = _compute_point_status(
+        {"photo": 1000, "music": 100}, {"photo", "music"}, {"photo", "music"}, THRESHOLDS
+    )
+    assert hs == 150.0  # (200 + 100) / 2
+    assert cs == 150.0
+
+
 def test_point_status_boundaries():
     h, _, _, _ = _compute_point_status({"m": 70}, {"m"}, set(), THRESHOLDS)
     assert h == "NORMAL"

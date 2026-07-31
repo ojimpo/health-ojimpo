@@ -18,6 +18,7 @@ from ..models.schemas import (
 )
 from ..sources.registry import SOURCE_ADAPTERS
 from .scoring import (
+    CATEGORY_SCORE_CAP,
     calculate_scores,
     calculate_source_score,
     cultural_status_from_score,
@@ -162,12 +163,14 @@ def _compute_point_status(
 
     Returns (health_status, cultural_status, health_score, cultural_score).
     """
-    # Health status: average of baseline category scores
-    baseline_vals = [scores[k] for k in baseline_cats if k in scores]
+    # Health status: average of baseline category scores. Category scores are
+    # capped the same way as calculate_scores so the chart lines match the
+    # axis scores (the stacked per-category values stay uncapped).
+    baseline_vals = [min(scores[k], CATEGORY_SCORE_CAP) for k in baseline_cats if k in scores]
     baseline_avg = sum(baseline_vals) / len(baseline_vals) if baseline_vals else None
 
     # Cultural status: average of activity category scores (100 = baseline met)
-    activity_vals = [scores.get(k, 0) for k in activity_cats]
+    activity_vals = [min(scores.get(k, 0), CATEGORY_SCORE_CAP) for k in activity_cats]
     cultural_pct = sum(activity_vals) / len(activity_vals) if activity_vals else None
 
     health = (

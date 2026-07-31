@@ -264,6 +264,23 @@ async def test_calculate_scores_excludes_sources_without_data_yet(test_db):
     assert result["baseline_avg"] == pytest.approx(100.0)
 
 
+async def test_calculate_scores_caps_category_contribution(test_db):
+    # A bursty category contributes at most CATEGORY_SCORE_CAP to each axis;
+    # the per-source score itself stays uncapped (charts/cards show it raw).
+    await add_source("burst", "photo", base_value=7, aggregation_period=7,
+                     classification="baseline", display_type="activity")
+    await add_source("calm", "music", base_value=70, aggregation_period=7,
+                     classification="baseline", display_type="activity")
+    for i in range(7):
+        await add_record(days_before(PAST, i), "burst", "photo", 10)  # 70/7 = 1000
+        await add_record(days_before(PAST, i), "calm", "music", 10)   # 70/70 = 100
+    result = await calculate_scores(PAST)
+    assert result["baseline_avg"] == pytest.approx(150.0)  # (200 + 100) / 2
+    assert result["cultural_pct"] == pytest.approx(150.0)
+    score, _, _ = await calculate_source_score("burst", PAST)
+    assert score == pytest.approx(1000.0)
+
+
 async def test_get_source_first_dates(test_db):
     await add_source("a", "music")
     await add_record("2026-01-05", "a", "music", 1)

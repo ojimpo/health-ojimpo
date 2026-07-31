@@ -12,8 +12,9 @@ no upper cap), by one of three methods selected via source_settings:
   aggregation_period days (kept as fallback).
 
 Aggregation: per-source scores are averaged within each category
-(category = one indicator), then category scores are averaged into the
-health / cultural axes. See ``calculate_scores``.
+(category = one indicator), then category scores are capped at
+``CATEGORY_SCORE_CAP`` and averaged into the health / cultural axes.
+See ``calculate_scores``.
 """
 import json
 import logging
@@ -30,6 +31,13 @@ LN2 = math.log(2)
 
 DEFAULT_NORMAL_THRESHOLD = 70
 DEFAULT_CAUTION_THRESHOLD = 40
+
+# Per-category cap applied only when aggregating into the health/cultural
+# axes. Count-type sources burst (e.g. 343 photos in a day = 23 weeks of
+# baseline) and, via decay, one such day can dominate an axis for a month.
+# Chart stacks and category cards keep showing the uncapped score — the
+# burst itself is real information; only the axis must not be hijacked.
+CATEGORY_SCORE_CAP = 200.0
 
 
 # --- thresholds / status mapping ---
@@ -342,8 +350,12 @@ async def calculate_scores(for_date: date | None = None) -> dict:
     for source_id, category in filter(started, activity_rows):
         activity_cats.setdefault(category, []).append(await source_score(source_id))
 
-    baseline_cat_scores = [sum(v) / len(v) for v in baseline_cats.values()]
-    activity_cat_scores = [sum(v) / len(v) for v in activity_cats.values()]
+    baseline_cat_scores = [
+        min(sum(v) / len(v), CATEGORY_SCORE_CAP) for v in baseline_cats.values()
+    ]
+    activity_cat_scores = [
+        min(sum(v) / len(v), CATEGORY_SCORE_CAP) for v in activity_cats.values()
+    ]
 
     baseline_avg = sum(baseline_cat_scores) / len(baseline_cat_scores) if baseline_cat_scores else 0
     cultural_pct = sum(activity_cat_scores) / len(activity_cat_scores) if activity_cat_scores else 0

@@ -45,6 +45,7 @@
 - 指標分類: `baseline`（ゼロが異常）、`event`（ゼロでも正常）、`health_only`（健康スコアのみ参加）
 - **集約方式**: ソース別スコア → カテゴリ内平均（カテゴリ=指標）→ 健康/文化スコア
   - 1指標に複数ソースがある場合（例: vitality = nextdns + stash）、ソースを増やしても重みは1カテゴリのまま
+- **カテゴリスコアキャップ**: 軸集約時のみ各カテゴリを200点で頭打ち（`CATEGORY_SCORE_CAP`、scoring.py + aggregation.py の2箇所）。カウント型ソースのバースト（例: X-E5で343枚/日 → 写真1080点）が軸スコアを1ヶ月支配するのを防ぐ。チャート積み上げ・カテゴリカードは生値のまま（migration 042でphoto_genka基準値も15→45に遡及再較正、3倍色つけ撤廃）
 - **健康指標**: baseline分類カテゴリの平均 → NORMAL/CAUTION/CRITICAL
 - **運動カテゴリは2ソース**: strava（意図的な運動）+ oura_steps（日常の歩数）。運動していなくても体が動いていれば健康スコアが落ちない誤検知対策（migration 038）
 - **主観フィードバック**: 毎晩12:00 UTC（21:00 JST）にLINEで本人にのみ3択質問（良い/普通/悪い）→ 既存の `/api/notification/line/webhook`（follow/unfollow購読と共用）でpostback受信 → `subjective_feedback` にスコアスナップショットと共に保存（migration 039）。スコア校正の正解データ蓄積用
@@ -74,7 +75,7 @@
 
 - `backend/app/migrations/` に連番SQLファイル
 - init_db: `schema_migrations` テーブルで適用済みファイルを追跡し、各マイグレーションは1回だけ実行（2026-07-08導入。それ以前は起動ごとに全再実行され、UPDATE/DELETEのみのマイグレーションが設定やレコードを巻き戻していた）
-- 最新: 039
+- 最新: 042
 - **コード変更はリビルドが必要**: `docker compose build backend && docker compose up -d backend`
 
 ## デプロイ
