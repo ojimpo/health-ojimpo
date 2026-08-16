@@ -55,6 +55,7 @@
   - **取得量の急減も検知する**（2026-08-16追加）。直近14日の合計が直前6窓（84日）の中央値の30%未満なら警告。存在チェックだけだと**量の崩壊が見えない**: lastfmはSpotify連携失効でscrobbleが100〜140件/日→週数件に崩壊したが、Pano Scrobbler/Plexが数日おきに数件送り続けたため「最終データ0〜2日前」で8週間ok判定だった。閾値30%は実データ16週のバックテストで決定（誤検知0、障害の9日後に検知）
   - 対象は `classification != 'event'` かつ `score_method != 'daily_avg'`。状態系(oura)のraw_valueは「量」でなくスケールも混在するため（stress 900〜2700がsleep/readiness 0〜100を飲み込む）除外。履歴が98日分揃わないソース、平常時が基準値期待量の半分未満のソースも判定しない
 - **LINEリッチメニュー（手動トリガー3ボタン、本人にのみリンク・友人には非表示）**: INGEST=全ソース取り込み（テキスト「ingest」も可、多重実行ガードあり、完了サマリをpush）/ HEALTH=ソースヘルスレポート即時送信 / MOOD=調子の3択質問即時送信。`services/line_menu.py`（postback `ingest:run` / `menu:health` / `menu:subjective`）。`POST /api/ingest/trigger` はBearer認証必須（WEBHOOK_SECRET）+ `source: "all"` 対応。リッチメニュー登録: `python3 scripts/setup_line_richmenu.py`（ホストで実行）
+- **友人への警告配信は本人の事前確認を挟む**: 遷移検出→持続性ガード通過の後、すぐには配信せず `notification_holds` に保留を作り本人LINEに確認（`services/notification_hold.py`、postback `nh:ok|send|snooze:<id>`）。「配信しない」で握りつぶし、「今すぐ配信」で即配信、「24時間待つ」で延長（最大2回）。**無応答のまま期限（既定24h、CRITICALは6h）を過ぎた時だけ実際に配信**（応答できない状態そのものが警告のシグナルなので、無視＝GO）。期限前にスコアが戻れば自動でキャンセル。保留中に更に悪化したら古い確認をsupersededにして出し直す。期限・リマインドはスケジューラの毎時ジョブ（`notification_hold_tick`）とingest後の両方で進む。`LINE_OWNER_USER_ID` 未設定か `NOTIFICATION_HOLD_ENABLED=false` なら従来どおり即時配信。履歴: `GET /api/notification/holds`
 - **文化的指標**: display_type=activity/card_only カテゴリの平均 → RICH/MODERATE/LOW
 - 総合スコアを1つにまとめない。2軸で独立して表示
 
