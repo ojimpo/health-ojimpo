@@ -210,7 +210,7 @@ async def line_webhook(request: Request):
 
     for event in deferred_events:
         try:
-            from ..services import line_menu, notification_hold
+            from ..services import line_menu, measurement_ask, notification_hold
             from ..services.subjective import handle_postback_event
 
             data = (event.get("postback") or {}).get("data", "")
@@ -218,6 +218,8 @@ async def line_webhook(request: Request):
                 await line_menu.handle_command_event(event)
             elif data.startswith(notification_hold.POSTBACK_PREFIX):
                 await notification_hold.handle_postback_event(event)
+            elif data.startswith(measurement_ask.POSTBACK_PREFIX):
+                await measurement_ask.handle_postback_event(event)
             else:
                 await handle_postback_event(event)
         except Exception:

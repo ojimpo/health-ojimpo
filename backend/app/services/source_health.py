@@ -420,5 +420,9 @@ async def send_weekly_report() -> bool:
     await send_line_notification(
         settings.line_owner_user_id, format_report(report, broken=broken)
     )
+    # 取得量の急減は機械的に判定できないので、レポートとは別に本人へ質問を出す。
+    from .measurement_ask import ask_about_collapses
+
+    await ask_about_collapses(report)
     logger.info("Source health report sent (%d sources)", len(report))
     return True
