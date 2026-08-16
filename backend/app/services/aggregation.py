@@ -576,11 +576,15 @@ async def get_dashboard_data(time_range: TimeRange) -> DashboardResponse:
             status=health_status.value,
             score=scores["baseline_avg"],
             message=HEALTH_MESSAGES[health_status],
+            unmeasured=[CATEGORY_LABELS.get(c, c) for c in scores["health_unmeasured"]],
+            measurable=scores["health_measurable"],
         ),
         cultural_status=StatusInfo(
             status=cultural_status.value,
             score=scores["cultural_pct"],
             message=CULTURAL_MESSAGES[cultural_status],
+            unmeasured=[CATEGORY_LABELS.get(c, c) for c in scores["cultural_unmeasured"]],
+            measurable=scores["cultural_measurable"],
         ),
         activity_chart=chart_data,
         condition_chart=chart_data,
@@ -625,15 +629,22 @@ async def get_shared_view_data(time_range: TimeRange) -> SharedViewResponse:
     bg_color = "#0A0000" if is_critical else "#07080F"
 
     return SharedViewResponse(
+        # 友人向けにも計測不能は伝える。この画面は「様子がおかしくないか」を
+        # 見てもらうためのものなので、外して黙っていると「見た限り元気そう」に
+        # 化けてしまう。個別のカテゴリ名までは出さず、件数だけ渡す。
         health_status=StatusInfo(
             status=health_status.value,
             score=scores["baseline_avg"],
             message=HEALTH_MESSAGES[health_status],
+            unmeasured=[CATEGORY_LABELS.get(c, c) for c in scores["health_unmeasured"]],
+            measurable=scores["health_measurable"],
         ),
         cultural_status=StatusInfo(
             status=cultural_status.value,
             score=scores["cultural_pct"],
             message=CULTURAL_MESSAGES[cultural_status],
+            unmeasured=[CATEGORY_LABELS.get(c, c) for c in scores["cultural_unmeasured"]],
+            measurable=scores["cultural_measurable"],
         ),
         activity_chart=chart_data,
         condition_chart=chart_data,

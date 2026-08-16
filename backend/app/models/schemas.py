@@ -23,6 +23,11 @@ class StatusInfo(BaseModel):
     status: str
     score: float
     message: str
+    # 計測が壊れているソースがあって軸から外したカテゴリのラベル。
+    # 黙って外すと「全部正常」に見えてしまうので、必ず一緒に返して表示させる。
+    unmeasured: list[str] = []
+    # 計測できているカテゴリが足りているか。False のときスコアは当てにならない。
+    measurable: bool = True
 
 
 # date + activityカテゴリ(float, 0埋め) + stateカテゴリ(float|None)

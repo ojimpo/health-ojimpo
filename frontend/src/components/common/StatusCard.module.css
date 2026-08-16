@@ -38,3 +38,27 @@
   margin-top: 4px;
   overflow-wrap: break-word;
 }
+
+.unmeasured {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
+  overflow-wrap: break-word;
+}
+
+.unmeasuredMark {
+  margin-right: 6px;
+  opacity: 0.7;
+}
+
+/* 計測不能が増えたときスコアが「良く」見えてはいけないので、はっきり警告する */
+.unreliable {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #ffb347;
+  margin-top: 6px;
+  overflow-wrap: break-word;
+}

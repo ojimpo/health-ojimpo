@@ -57,12 +57,16 @@ export default function SharedViewPage() {
             status={data.health_status.status}
             score={data.health_status.score}
             message={data.health_status.message}
+            unmeasured={data.health_status.unmeasured}
+            measurable={data.health_status.measurable}
             color={healthConf.color}
           />
           <StatusCard
             status={data.cultural_status.status}
             score={data.cultural_status.score}
             message={data.cultural_status.message}
+            unmeasured={data.cultural_status.unmeasured}
+            measurable={data.cultural_status.measurable}
             color={culturalConf.color}
             delay={0.1}
           />
