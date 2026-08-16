@@ -27,26 +27,35 @@ class ClaudeLocalAdapter(SourceAdapter):
         return 0, 0
 
     async def store_webhook_data(
-        self, webhook_date: str, minutes: float, host: str = "unknown"
+        self,
+        webhook_date: str,
+        minutes: float,
+        host: str = "unknown",
+        version: str | None = None,
     ) -> None:
         """ホスト別の日次作業分数を保存（同date+host内で最大値を採用）。
 
         フックは1日のうち何度も呼ばれうるが、毎回当日全体の累積分数を計算して
         送ってくる前提なので、追加ではなく最大値で更新する（リトライ・重複耐性）。
+
+        client_version は分数と違い常に上書きする（端末のスクリプト版は最新の
+        申告が正しい。NULL = versionを送らない旧スクリプト）。
         """
         async with get_db_context() as db:
             await db.execute(
-                """INSERT INTO claude_session_minutes (date, host, minutes, updated_at)
-                VALUES (?, ?, ?, datetime('now'))
+                """INSERT INTO claude_session_minutes
+                (date, host, minutes, updated_at, client_version)
+                VALUES (?, ?, ?, datetime('now'), ?)
                 ON CONFLICT(date, host) DO UPDATE SET
                     minutes = MAX(claude_session_minutes.minutes, excluded.minutes),
-                    updated_at = excluded.updated_at""",
-                (webhook_date, host, minutes),
+                    updated_at = excluded.updated_at,
+                    client_version = excluded.client_version""",
+                (webhook_date, host, minutes, version),
             )
             await db.commit()
         logger.info(
-            "claude session: host=%s date=%s minutes=%.1f stored",
-            host, webhook_date, minutes,
+            "claude session: host=%s date=%s minutes=%.1f version=%s stored",
+            host, webhook_date, minutes, version or "v1",
         )
 
     async def aggregate(self) -> None:

@@ -1,46 +1,37 @@
 # scripts
 
-各クライアントマシンから Claude Code のセッション時間（分）を `health-ojimpo` バックエンドに送信するためのスクリプト群。
+各クライアントマシンから Claude Code のセッション時間（分）を `health-ojimpo` バックエンドに送信するためのスクリプト。
+
+## 方針: 全端末で同一のスクリプトを使う
+
+**端末ごとのラッパーは作りません。** 以前は端末ごとに手書きの `.sh` ラッパーがあり、
+arigato-nas は `.env` 読み込み、Windows 機は値を直書き、Mac は 1Password を実行時に叩く、と
+3方言に分岐していました。結果として:
+
+- arigato-nas は `.env` に `OUTING_HOME_CITIES=Sōka Shi`（クォート無し）が入った日から、
+  ラッパーの `source .env` が `Shi: command not found` で失敗し、冒頭の `set -e` で
+  python に到達せず**3ヶ月間サイレントに停止**（2026-05-26〜08-16）
+- Mac は `op://` 参照の vault 名・項目名が間違ったまま一度も実行検証されず停止
+
+どちらも「端末ごとに違うシェルスクリプトを手書きした」ことに起因します。分岐点を無くすため、
+**[`claude_session_report.py`](claude_session_report.py) 1本を全端末に同じ内容で置き**、
+端末差分は設定ファイルにのみ置きます。設定ファイルは bash ではなく **スクリプト自身がパース**
+します（`source` させると、値のクォート漏れがフックの死に直結するため）。
 
 ## 仕組み
 
-1. Claude Code の **Stop hook**（応答完了時に発火）が下記スクリプトを呼ぶ
-2. スクリプトが `~/.claude/projects/**/*.jsonl` のタイムスタンプを集計し、当日のセッション時間を推定
+1. Claude Code の **Stop hook**（応答完了時に発火）がスクリプトを呼ぶ
+2. `~/.claude/projects/**/*.jsonl` のタイムスタンプを集計し、日次のセッション時間を推定
 3. セッション切れ判定は **5分**（連続イベント間隔が 5分以下なら同一セッションとして加算）
-4. `POST /api/ingest/webhook/claude_session` に `{date, minutes, host}` を Bearer 認証で送信
-5. サーバー側は `host` 単位で保存し、`date` 単位で合算してダッシュボードに反映（冪等：MAX で更新）
+4. `POST /api/ingest/webhook/claude_session` に `{date, minutes, host, version}` を Bearer 認証で送信
+5. サーバー側は `host` 単位で保存し、`date` 単位で合算（冪等：`MAX` で更新）
 
-## ファイル
+前回送信から **5分未満なら送りません**（Stop フックは応答のたびに発火するため）。
+間引きで末尾の数分が落ちても、次の送信が同じ日を再計算して `MAX` で上書きするので回復します。
 
-- [`claude_session_report.py`](claude_session_report.py) — 集計と POST 送信を行う Python 本体
-- [`claude_session_report.sh`](claude_session_report.sh) — arigato-nas 用のラッパー。リポジトリの `.env` から `WEBHOOK_SECRET` を読み込んで Python を起動する
-
-## arigato-nas（このサーバー自身）でのセットアップ
-
-すでに設定済みです。`~/.claude/settings.json` に以下が入っています:
-
-```json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "nohup /home/kouki/dev/health-ojimpo/scripts/claude_session_report.sh >/dev/null 2>&1 &"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-## 他端末（Mac / iPad / 他 Linux 等）でのセットアップ
+## セットアップ（全端末共通）
 
 ### 1. スクリプトを配置
-
-リポジトリを clone するか、`claude_session_report.py` 単体を任意のパスに置く。
 
 ```bash
 mkdir -p ~/.local/bin
@@ -49,27 +40,39 @@ curl -o ~/.local/bin/claude_session_report.py \
 chmod +x ~/.local/bin/claude_session_report.py
 ```
 
-### 2. ラッパーを作成
+arigato-nas（サーバー自身）も例外にせず、同じ手順・同じパスで置きます。
 
-`.env` を持たない他端末では、URL とシークレットを直接指定するラッパーを作る。
+### 2. 設定ファイルを作る
 
 ```bash
-cat > ~/.local/bin/claude_session_report.sh <<'EOF'
-#!/bin/bash
-export HEALTH_WEBHOOK_URL="https://health.ojimpo.com/api/ingest/webhook/claude_session"
-export HEALTH_WEBHOOK_SECRET="（arigato-nas の .env の WEBHOOK_SECRET と同じ値）"
-# host 名を明示したい場合は指定（未指定時は socket.gethostname() が使われる）
-# export HEALTH_HOST_NAME="kouki-macbook"
-exec python3 ~/.local/bin/claude_session_report.py
+mkdir -p ~/.config/health-ojimpo
+umask 077
+cat > ~/.config/health-ojimpo/report.env <<'EOF'
+HEALTH_WEBHOOK_URL="https://health.ojimpo.com/api/ingest/webhook/claude_session"
+HEALTH_WEBHOOK_SECRET="（サーバーの .env の WEBHOOK_SECRET と同じ値）"
+HEALTH_HOST_NAME="この端末の識別子"
 EOF
-chmod +x ~/.local/bin/claude_session_report.sh
+chmod 600 ~/.config/health-ojimpo/report.env
 ```
 
-`/api/ingest/webhook*` は Cloudflare Access 保護対象外なので、Bearer 認証のみで外部端末から到達可能です。
+**値は必ずクォートで囲むこと。** 1Password 等で管理している場合も、実行時ではなく
+**セットアップ時に1回だけ**取り出してこのファイルに置きます（Stop フックは応答のたびに
+発火するので、実行時に生体認証を挟むと使い物になりません）。
 
-### 3. Claude Code の Stop hook に登録
+arigato-nas（サーバー自身）だけは URL を `http://localhost:8400/api/ingest/webhook/claude_session`
+にします。
 
-`~/.claude/settings.json` を編集して `hooks.Stop` を追加する（既存の設定がある場合はマージ）。
+#### `HEALTH_HOST_NAME` は明示すること
+
+未指定だと `socket.gethostname()` が使われますが、**端末を消して同じ名前で組み直すと
+旧マシンと同じ host キーになり、`MAX` 更新で消去当日の値が潰し合います**（実際に
+2026-08-16 の Mac 再構築で発生）。ホスト名に依存させず、明示的に指定し、
+**端末を組み直したら名前を変える**（`kagi-macbook` → `kagi-macbook-2`）運用にします。
+旧 host の行は履歴として残り、機材を替えた時期が分かって便利です。
+
+### 3. Stop hook に登録
+
+`~/.claude/settings.json` を編集（既存設定があればマージ）:
 
 ```json
 {
@@ -79,7 +82,7 @@ chmod +x ~/.local/bin/claude_session_report.sh
         "hooks": [
           {
             "type": "command",
-            "command": "nohup ~/.local/bin/claude_session_report.sh >/dev/null 2>&1 &"
+            "command": "nohup python3 ~/.local/bin/claude_session_report.py >/dev/null 2>&1 &"
           }
         ]
       }
@@ -88,39 +91,81 @@ chmod +x ~/.local/bin/claude_session_report.sh
 }
 ```
 
-`nohup ... &` でバックグラウンド実行することで、Claude Code 本体の応答に遅延が出ないようにする。
+`nohup ... &` でバックグラウンド実行し、Claude Code 本体の応答に遅延が出ないようにします。
 
-### 4. 動作確認
+### 4. 疎通確認
 
-Claude Code でなにかしら 1 ターン会話したあと、サーバー側で記録を確認:
+```bash
+python3 ~/.local/bin/claude_session_report.py --status    # 設定が読めているか
+python3 ~/.local/bin/claude_session_report.py --dry-run   # 送らずに計算結果だけ表示
+python3 ~/.local/bin/claude_session_report.py --force     # レート制限を無視して送信
+```
+
+`--status` の「最終送信」が更新されていれば成功です。失敗していれば
+`~/.local/state/health-ojimpo/report.log` に理由が残ります。
+
+## オプション
+
+| オプション | 説明 |
+|---|---|
+| `--status` | 設定・最終送信時刻・ログ末尾を表示 |
+| `--dry-run` | 計算だけして送信しない |
+| `--force` | 5分のレート制限を無視して送る |
+| `--all` | 48時間以内に更新された JSONL だけでなく全履歴を走査（バックフィル用） |
+| `--since YYYY-MM-DD` | この日付以降だけ送る（`--all` と併用） |
+
+### 過去分のバックフィル
+
+```bash
+python3 ~/.local/bin/claude_session_report.py --all --since 2026-05-01 --force
+```
+
+サーバー側は `MAX` 更新なので、既存の値より大きいときだけ上書きされます。
+**Claude Code の JSONL は既定30日で削除される**ので、それより古い期間は復元できません。
+
+## 設定項目
+
+| 変数 | 必須 | 説明 |
+|------|-----|------|
+| `HEALTH_WEBHOOK_URL` | - | 送信先。既定は `https://health.ojimpo.com/api/ingest/webhook/claude_session` |
+| `HEALTH_WEBHOOK_SECRET` | Yes | Bearer 認証トークン（サーバーの `.env` の `WEBHOOK_SECRET`） |
+| `HEALTH_HOST_NAME` | 推奨 | 送信元識別子。未指定時は `socket.gethostname()`（上記の理由で明示推奨） |
+| `CLAUDE_PROJECTS_DIR` | - | Claude Code の projects ディレクトリ。既定 `~/.claude/projects` |
+
+同名の環境変数があれば設定ファイルより優先されます。
+
+## 認証について
+
+- **共有シークレット1本を全端末に配る設計**です。端末ごとにトークンを分けてはいません。
+  `host` はクライアントの自己申告で、シークレットを持てば任意の host を名乗れますが、
+  データが「自分のコーディング時間」なので実害がありません
+- `/api/ingest/webhook*` は Cloudflare Access 保護の対象外なので、外部端末から
+  Bearer 認証だけで到達できます
+- Python 標準の User-Agent は CDN 手前の保護機構にスクリプト判定で弾かれる（403）ため、
+  独自 UA（`health-ojimpo-hook/<version>`）を送っています。別実装を作る場合も必須です
+
+## 止まっていることに気付く仕組み
+
+v1 は失敗しても完全に無言で `exit 0` していたため、上記の3ヶ月停止に誰も気付けませんでした。
+現在は2段構えです:
+
+- **クライアント側**: 送信の成否を `~/.local/state/health-ojimpo/report.log` に記録
+- **サーバー側**: 週次ソースヘルスレポート（日曜 21:05 JST に本人 LINE）が
+  **端末ごと**に沈黙を検知する。閾値は端末ごとに自動較正（その端末の過去の送信間隔の
+  中央値 × 4、最短7日・最長60日）。120日沈黙した端末は引退扱いで鳴り止む。
+  現役端末が古いバージョンのスクリプトを動かしている場合も指摘する
+
+ソース単位のチェックだけでは、**1台のフックが死んでも他端末が送っていれば生きて見える**
+ため気付けません（Last.fm の「データは来ているが量が崩壊」と同型の穴）。
+
+## 記録内容の確認
 
 ```bash
 docker exec health-backend python -c "
 import sqlite3
 con = sqlite3.connect('/app/data/health.db')
-for row in con.execute('SELECT date, host, minutes FROM claude_session_minutes ORDER BY date DESC LIMIT 5'):
+for row in con.execute('''SELECT date, host, minutes, client_version
+    FROM claude_session_minutes ORDER BY date DESC LIMIT 10'''):
     print(row)
 "
 ```
-
-新しい `host` 名でレコードが入っていれば成功。
-
-## 環境変数
-
-| 変数 | 必須 | 説明 |
-|------|-----|------|
-| `HEALTH_WEBHOOK_URL` | Yes | 送信先 URL（例: `http://localhost:8400/api/ingest/webhook/claude_session` または `https://health.ojimpo.com/api/ingest/webhook/claude_session`） |
-| `HEALTH_WEBHOOK_SECRET` | Yes | Bearer 認証トークン（サーバーの `.env` の `WEBHOOK_SECRET` と同じ値） |
-| `HEALTH_HOST_NAME` | - | 送信元識別子。未指定時は `socket.gethostname()` |
-| `CLAUDE_PROJECTS_DIR` | - | Claude Code の projects ディレクトリ。未指定時は `~/.claude/projects` |
-
-## 過去分のバックフィル
-
-新しい端末を追加した直後、過去の JSONL 分を遡って入れたい場合:
-
-```bash
-# 端末上で（環境変数をセットした上で）
-python3 ~/.local/bin/claude_session_report.py
-```
-
-スクリプトは「当日分のみ」を送るので、過去日全部を一括投入したい場合はスクリプトの `main()` を一時的に書き換えるか、サーバー側で `compute_daily_session_minutes()` を直接呼ぶ運用になる（arigato-nas は初回起動時にこの方式で 43 日分を一括投入済み）。

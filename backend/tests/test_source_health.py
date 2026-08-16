@@ -2,7 +2,7 @@
 from datetime import date, timedelta
 
 from app import database
-from app.services.source_health import build_report, format_report
+from app.services.source_health import CLAUDE_CLIENT_VERSION, build_report, format_report
 
 from .conftest import add_record, add_source
 
@@ -26,6 +26,25 @@ async def _add_oauth_token(source_id: str):
             VALUES (?, 'at', 'rt', 0)""",
             (source_id,),
         )
+        await db.commit()
+
+
+async def _add_claude_host(
+    host: str,
+    last: date,
+    count: int,
+    *,
+    step: int = 1,
+    version: str | None = CLAUDE_CLIENT_VERSION,
+):
+    """claude_session_minutes に、last から step日おきに遡って count 件入れる。"""
+    async with database.get_db_context() as db:
+        for i in range(count):
+            await db.execute(
+                """INSERT INTO claude_session_minutes (date, host, minutes, client_version)
+                VALUES (?, ?, 60, ?)""",
+                ((last - timedelta(days=i * step)).isoformat(), host, version),
+            )
         await db.commit()
 
 
@@ -195,6 +214,78 @@ async def test_new_source_without_history_not_flagged(test_db):
     await add_record((VOL_TODAY - timedelta(days=1)).isoformat(), "newsrc", "music", 5)
     report = await build_report(today=VOL_TODAY, token_checker=_no_token)
     assert report[0]["level"] == "ok"
+
+
+async def test_claude_host_silence_warns(test_db):
+    """毎日送ってくる端末が7日以上黙ったら警告する。
+
+    2026-05-26〜08-16 に arigato-nas のフックが死んでいたのに、他端末が送っていたため
+    ソース単位では ok に見えて3ヶ月気付けなかった事故の再発防止。
+    """
+    await add_source("claude", "coding", classification="event")
+    await add_record(VOL_TODAY.isoformat(), "claude", "coding", 100)  # 他端末が送っている
+    await _add_claude_host("nas", VOL_TODAY - timedelta(days=90), 60, step=1)
+    await _add_claude_host("laptop", VOL_TODAY, 6, step=2)
+
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    levels = {r["id"]: r["level"] for r in report}
+    assert levels["claude"] == "ok"  # ソース単位では生きて見える
+    assert levels["claude:nas"] == "warn"
+    assert "claude:laptop" not in levels
+    detail = next(r["detail"] for r in report if r["id"] == "claude:nas")
+    assert "送信なし" in detail
+
+
+async def test_claude_host_sporadic_not_flagged(test_db):
+    """たまにしか触らない端末は、その端末の平常間隔で測る（毎日基準で鳴らさない）。"""
+    await add_source("claude", "coding", classification="event")
+    await add_record(VOL_TODAY.isoformat(), "claude", "coding", 100)
+    # 20日おきに使う端末が10日沈黙している状態
+    await _add_claude_host("desktop", VOL_TODAY - timedelta(days=10), 6, step=20)
+
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert not [r for r in report if r["id"].startswith("claude:")]
+
+
+async def test_claude_host_retired_not_flagged(test_db):
+    """長く使っていない端末は引退扱いで鳴らし続けない。"""
+    await add_source("claude", "coding", classification="event")
+    await add_record(VOL_TODAY.isoformat(), "claude", "coding", 100)
+    await _add_claude_host("oldtab", VOL_TODAY - timedelta(days=150), 6, step=1)
+
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert not [r for r in report if r["id"].startswith("claude:")]
+
+
+async def test_claude_host_new_not_flagged(test_db):
+    """履歴が数件しかない端末は平常間隔を測れないので判定しない。"""
+    await add_source("claude", "coding", classification="event")
+    await add_record(VOL_TODAY.isoformat(), "claude", "coding", 100)
+    await _add_claude_host("fresh", VOL_TODAY - timedelta(days=30), 3, step=1)
+
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert not [r for r in report if r["id"].startswith("claude:")]
+
+
+async def test_claude_host_stale_version_warns(test_db):
+    """現役端末が古いレポータを動かしていたら指摘する（version未申告=v1）。"""
+    await add_source("claude", "coding", classification="event")
+    await add_record(VOL_TODAY.isoformat(), "claude", "coding", 100)
+    await _add_claude_host("laptop", VOL_TODAY, 6, step=1, version=None)
+
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    row = next(r for r in report if r["id"] == "claude:laptop")
+    assert row["level"] == "warn"
+    assert "レポータ v1" in row["detail"]
+
+
+async def test_claude_host_current_version_is_quiet(test_db):
+    await add_source("claude", "coding", classification="event")
+    await add_record(VOL_TODAY.isoformat(), "claude", "coding", 100)
+    await _add_claude_host("laptop", VOL_TODAY, 6, step=1, version=CLAUDE_CLIENT_VERSION)
+
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert not [r for r in report if r["id"].startswith("claude:")]
 
 
 async def test_always_quiet_source_not_flagged(test_db):

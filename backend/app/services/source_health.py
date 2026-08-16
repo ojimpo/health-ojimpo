@@ -10,6 +10,8 @@
 - 🟡 warn: データが一定日数途絶えている
   （baseline系=毎日出るはずのソースは3日、event系=ゼロでも正常なソースは45日）
 - 🟡 warn: データは来ているが**取得量が平常時から急減**している（_volume_collapse）
+- 🟡 warn: Claude Code は**端末ごと**にも見る。1台のフックが死んでも他端末が送って
+  いればソース単位では生きて見えるため（_claude_host_rows）
 - 🟢 ok: 上記以外
 
 取得量チェックを足した理由（2026-08-16）: lastfm は 7/24 に Spotify 連携が失効して
@@ -114,6 +116,81 @@ def _volume_collapse(
     if recent < median * VOLUME_DROP_RATIO:
         return recent, median
     return None
+
+
+# --- Claude Code の端末別チェック ---
+# claude は複数端末のフックが同じソースに送るため、**1台が死んでも他が送っていれば
+# ソース単位では生きて見える**。実際 arigato-nas は 2026-05-26 から3ヶ月無音だったのに
+# （.env のクォート漏れで source が失敗し set -e でフックごと死んでいた）、
+# 他端末が送り続けたため一度も警告が出なかった。lastfm の量崩壊と同型の穴。
+CLAUDE_CLIENT_VERSION = "2"  # scripts/claude_session_report.py の VERSION と揃える
+# 端末ごとの「送ってこない普通の間隔」は大きく違う（常時稼働のNASと、たまに触る
+# Windows機を同じ日数で測れない）。各端末の過去の間隔の中央値から閾値を作る。
+CLAUDE_HOST_MIN_RECORDS = 5  # 履歴が短い端末は判定しない
+CLAUDE_HOST_GAP_MULTIPLIER = 4
+CLAUDE_HOST_MIN_SILENT_DAYS = 7  # 毎日動く端末でもこれ未満では鳴らさない
+CLAUDE_HOST_MAX_SILENT_DAYS = 60  # 間隔が粗い端末でもこれを超えたら鳴らす
+CLAUDE_HOST_RETIRE_DAYS = 120  # これ以上沈黙した端末は「引退」とみなし鳴らし続けない
+CLAUDE_HOST_VERSION_ACTIVE_DAYS = 30  # 現役端末だけバージョンを問う
+
+
+def _host_silence_limit(dates: list[date]) -> int:
+    """その端末の過去の送信間隔から、沈黙を異常とみなす日数を決める。"""
+    gaps = [(b - a).days for a, b in zip(dates, dates[1:])]
+    typical = statistics.median(gaps) if gaps else 1
+    return int(max(
+        CLAUDE_HOST_MIN_SILENT_DAYS,
+        min(CLAUDE_HOST_MAX_SILENT_DAYS, round(typical * CLAUDE_HOST_GAP_MULTIPLIER)),
+    ))
+
+
+async def _claude_host_rows(today: date) -> list[dict]:
+    """Claude Code の端末ごとの健全性を評価した行を返す（正常な端末は返さない）。"""
+    async with get_db_context() as db:
+        rows = await db.execute_fetchall(
+            """SELECT host, date, client_version FROM claude_session_minutes
+            ORDER BY host, date"""
+        )
+
+    by_host: dict[str, list[date]] = {}
+    versions: dict[str, str | None] = {}
+    for host, d, version in rows:
+        by_host.setdefault(host, []).append(date.fromisoformat(d))
+        versions[host] = version  # date順なので最新の申告が残る
+
+    out = []
+    for host, dates in sorted(by_host.items()):
+        days_since = (today - dates[-1]).days
+        if days_since > CLAUDE_HOST_RETIRE_DAYS or len(dates) < CLAUDE_HOST_MIN_RECORDS:
+            continue
+
+        limit = _host_silence_limit(dates)
+        if days_since > limit:
+            detail = (
+                f"{days_since}日間送信なし（平常は{limit}日以内）"
+                " — Stopフック停止の可能性"
+            )
+        elif (
+            days_since <= CLAUDE_HOST_VERSION_ACTIVE_DAYS
+            and (versions[host] or "1") != CLAUDE_CLIENT_VERSION
+        ):
+            detail = (
+                f"レポータ v{versions[host] or '1'}（現行 v{CLAUDE_CLIENT_VERSION}）"
+                " — 再インストール推奨"
+            )
+        else:
+            continue
+
+        out.append({
+            "id": f"claude:{host}",
+            "name": f"Claude Code ({host})",
+            "level": "warn",
+            "detail": detail,
+            "last_date": dates[-1].isoformat(),
+            "days_since": days_since,
+            "oauth": False,
+        })
+    return out
 
 
 async def _check_token(source_id: str):
@@ -230,6 +307,9 @@ async def build_report(today: date | None = None, token_checker=_check_token) ->
             "days_since": days_since,
             "oauth": token_ok is not None,
         })
+
+    if any(r["id"] == "claude" for r in report):
+        report.extend(await _claude_host_rows(today))
 
     order = {"broken": 0, "warn": 1, "ok": 2}
     report.sort(key=lambda r: (order[r["level"]], r["id"]))

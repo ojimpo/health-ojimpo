@@ -53,6 +53,7 @@
 - **gcalの複数日イベントは日割り展開**: 旅行等は期間中の各日に1回ずつ計上（終日イベントのend_dateはexclusive扱い、時刻ありの日またぎは開始日のみ、30日で打ち切り）
 - **週次ソースヘルスレポート**: 毎週日曜12:05 UTC（21:05 JST）に全アクティブソースの取得健全性を本人LINEにのみ通知（`services/source_health.py`）。OAuthトークンは実refreshで失効検知、データ途絶はbaseline系3日/event系45日で警告。プレビュー: `GET /api/notification/health-report`
   - **取得量の急減も検知する**（2026-08-16追加）。直近14日の合計が直前6窓（84日）の中央値の30%未満なら警告。存在チェックだけだと**量の崩壊が見えない**: lastfmはSpotify連携失効でscrobbleが100〜140件/日→週数件に崩壊したが、Pano Scrobbler/Plexが数日おきに数件送り続けたため「最終データ0〜2日前」で8週間ok判定だった。閾値30%は実データ16週のバックテストで決定（誤検知0、障害の9日後に検知）
+  - **Claude Codeは端末（host）ごとにも沈黙を検知する**（2026-08-16追加）。1台のフックが死んでも他端末が送っていればソース単位では生きて見えるため（実際 arigato-nas が3ヶ月無音だったのに気付けなかった）。閾値は端末ごとに自動較正（その端末の過去の送信間隔の中央値×4、最短7日・最長60日、履歴5件未満と120日沈黙した端末は対象外）。現役端末が古いレポータを動かしていれば `client_version` で指摘する
   - 対象は `classification != 'event'` かつ `score_method != 'daily_avg'`。状態系(oura)のraw_valueは「量」でなくスケールも混在するため（stress 900〜2700がsleep/readiness 0〜100を飲み込む）除外。履歴が98日分揃わないソース、平常時が基準値期待量の半分未満のソースも判定しない
 - **LINEリッチメニュー（手動トリガー3ボタン、本人にのみリンク・友人には非表示）**: INGEST=全ソース取り込み（テキスト「ingest」も可、多重実行ガードあり、完了サマリをpush）/ HEALTH=ソースヘルスレポート即時送信 / MOOD=調子の3択質問即時送信。`services/line_menu.py`（postback `ingest:run` / `menu:health` / `menu:subjective`）。`POST /api/ingest/trigger` はBearer認証必須（WEBHOOK_SECRET）+ `source: "all"` 対応。リッチメニュー登録: `python3 scripts/setup_line_richmenu.py`（ホストで実行）
 - **友人への警告配信は本人の事前確認を挟む**: 遷移検出→持続性ガード通過の後、すぐには配信せず `notification_holds` に保留を作り本人LINEに確認（`services/notification_hold.py`、postback `nh:ok|send|snooze:<id>`）。「配信しない」で握りつぶし、「今すぐ配信」で即配信、「24時間待つ」で延長（最大2回）。**無応答のまま期限（既定24h、CRITICALは6h）を過ぎた時だけ実際に配信**（応答できない状態そのものが警告のシグナルなので、無視＝GO）。期限前にスコアが戻れば自動でキャンセル。保留中に更に悪化したら古い確認をsupersededにして出し直す。期限・リマインドはスケジューラの毎時ジョブ（`notification_hold_tick`）とingest後の両方で進む。`LINE_OWNER_USER_ID` 未設定か `NOTIFICATION_HOLD_ENABLED=false` なら従来どおり即時配信。履歴: `GET /api/notification/holds`
@@ -88,8 +89,17 @@
 
 - `backend/app/migrations/` に連番SQLファイル
 - init_db: `schema_migrations` テーブルで適用済みファイルを追跡し、各マイグレーションは1回だけ実行（2026-07-08導入。それ以前は起動ごとに全再実行され、UPDATE/DELETEのみのマイグレーションが設定やレコードを巻き戻していた）
-- 最新: 044（043は `043_notification_hold.sql` で使用済みなので採番の重複に注意）
+- 最新: 045（043は `043_notification_hold.sql` で使用済みなので採番の重複に注意）
 - **コード変更はリビルドが必要**: `docker compose build backend && docker compose up -d backend`
+
+## Claude Code 時間計測のクライアント（全端末共通）
+
+- **端末ごとのラッパーを作らない**。`scripts/claude_session_report.py` 1本を全端末（arigato-nas含む）に同じ内容で置き、差分は `~/.config/health-ojimpo/report.env`（0600）にのみ置く。設定はbashの `source` ではなくスクリプト自身がパースする
+  - 理由: 端末ごとに手書きした `.sh` が3方言に分岐し、両方サイレントに壊れた。arigato-nasは `.env` に `OUTING_HOME_CITIES=Sōka Shi`（クォート無し）が入った日から `source .env` が失敗し `set -e` でフックごと死んで**3ヶ月無音**（2026-05-26〜08-16）。Macは `op://` 参照が誤ったまま停止
+  - 配布は GitHub raw（リポジトリはpublic）。インストール手順は `scripts/README.md`
+- `HEALTH_HOST_NAME` は必ず明示し、**端末を組み直したら名前を変える**（`MAX(date,host)` 更新なので同名だと消去当日の値が潰し合う）
+- 送信は5分レート制限、成否は `~/.local/state/health-ojimpo/report.log` に残す。v1は完全に無言だった
+- スクリプトを変更したら `VERSION` を上げ、`services/source_health.py` の `CLAUDE_CLIENT_VERSION` も揃える（週次レポートが古い版の端末を指摘する）
 
 ## デプロイ
 
