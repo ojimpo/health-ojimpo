@@ -48,6 +48,7 @@
 - **カテゴリスコアキャップ**: 軸集約時のみ各カテゴリを200点で頭打ち（`CATEGORY_SCORE_CAP`、scoring.py + aggregation.py の2箇所）。カウント型ソースのバースト（例: X-E5で343枚/日 → 写真1080点）が軸スコアを1ヶ月支配するのを防ぐ。チャート積み上げ・カテゴリカードは生値のまま（migration 042でphoto_genka基準値も15→45に遡及再較正、3倍色つけ撤廃）
 - **健康指標**: baseline分類カテゴリの平均 → NORMAL/CAUTION/CRITICAL
 - **運動カテゴリは2ソース**: strava（意図的な運動）+ oura_steps（日常の歩数）。運動していなくても体が動いていれば健康スコアが落ちない誤検知対策（migration 038）
+- **活力カテゴリは2ソース**: nextdns_vitality（DNSクエリ数）+ stash_vitality。**stashは実再生時間ベース**（migration 044）。再生回数だと「30分観た日」と「5秒で閉じた日」が同じ1playになり、体感と乖離していた（例: 2026-08-13は1play=ほぼ最低点だが実再生22分）。Stashは1回の再生ごとの長さを持たず `Scene.play_duration` に累積秒数しかないので、ingestごとにシーン単位のスナップショット（`stash_scene_state`）と差分を取り、増えた秒数だけを同期間に増えた `play_history` の日付へ配分する（ingestは1時間毎なので日付の取り違えはほぼ起きない）。初回だけ差分が取れないため累積値を全履歴に等分して過去日を推定。基準値は180 min/週（2026-03〜08の週次中央値181分）。旧基準70 plays/週は実測中央値39 playsの約1.8倍で、通常の週でも常時56点しか出ず活力が慢性的に低い主因だった
 - **主観フィードバック**: 毎晩12:00 UTC（21:00 JST）にLINEで本人にのみ3択質問（良い/普通/悪い）→ 既存の `/api/notification/line/webhook`（follow/unfollow購読と共用）でpostback受信 → `subjective_feedback` にスコアスナップショットと共に保存（migration 039）。スコア校正の正解データ蓄積用
 - **gcalの複数日イベントは日割り展開**: 旅行等は期間中の各日に1回ずつ計上（終日イベントのend_dateはexclusive扱い、時刻ありの日またぎは開始日のみ、30日で打ち切り）
 - **週次ソースヘルスレポート**: 毎週日曜12:05 UTC（21:05 JST）に全アクティブソースの取得健全性を本人LINEにのみ通知（`services/source_health.py`）。OAuthトークンは実refreshで失効検知、データ途絶はbaseline系3日/event系45日で警告。プレビュー: `GET /api/notification/health-report`
@@ -86,7 +87,7 @@
 
 - `backend/app/migrations/` に連番SQLファイル
 - init_db: `schema_migrations` テーブルで適用済みファイルを追跡し、各マイグレーションは1回だけ実行（2026-07-08導入。それ以前は起動ごとに全再実行され、UPDATE/DELETEのみのマイグレーションが設定やレコードを巻き戻していた）
-- 最新: 042
+- 最新: 044（043は `043_notification_hold.sql` で使用済みなので採番の重複に注意）
 - **コード変更はリビルドが必要**: `docker compose build backend && docker compose up -d backend`
 
 ## デプロイ
