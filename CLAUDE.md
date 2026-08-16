@@ -47,6 +47,13 @@
   - 1指標に複数ソースがある場合（例: vitality = nextdns + stash）、ソースを増やしても重みは1カテゴリのまま
 - **カテゴリスコアキャップ**: 軸集約時のみ各カテゴリを200点で頭打ち（`CATEGORY_SCORE_CAP`、scoring.py + aggregation.py の2箇所）。カウント型ソースのバースト（例: X-E5で343枚/日 → 写真1080点）が軸スコアを1ヶ月支配するのを防ぐ。チャート積み上げ・カテゴリカードは生値のまま（migration 042でphoto_genka基準値も15→45に遡及再較正、3倍色つけ撤廃）
 - **健康指標**: baseline分類カテゴリの平均 → NORMAL/CAUTION/CRITICAL
+- **計測断とサボりを区別する（migration 047、`services/measurement_state.py`）**: スコアは「やっていない」と「計測が壊れている」を区別できず、Last.fmのSpotify連携失効（2026-07-24）で音楽が131→8になり健康スコアが誤ってCAUTIONに落ちた。`source_measurement_state` に broken を持ち、broken なソースはカテゴリ平均から外す。全ソースbrokenのカテゴリは軸から外れる（`health_unmeasured` / `cultural_unmeasured`）
+  - **除外の条件は「値が低いこと」にしない**。ここを破ると本物の活動低下まで消えて健康軸の存在意義が無くなる。証拠は `token`（トークン失効）/ `ingest_failed` / `user_reported`(本人申告) の3つだけ
+  - **取得量の急減は証拠にしない**。本物の低下と原理的に区別できないため、`services/measurement_ask.py` がLINEで2択を送り本人に聞く（postback prefix `ms:`、14日間は聞き直さない）。回答が来るまで軸から外さない
+  - **安全弁**: 計測できているカテゴリが `MIN_MEASURABLE_CATEGORIES`(3) を割ったら `measurable=false`。UIはステータスを UNRELIABLE にしてスコアを減光する。計測不能が増えたときスコアが「良く」なってはいけない
+  - **除外は必ず見せる**: スコアカードに「⚪ 計測不能: 音楽」、週次レポートに「スコアから除外中」の節。黙って外すと「全部正常」に見え、それ自体がソース悪化の見逃しになる
+  - 復帰は自動。自動判定はその障害が消えれば戻し、本人申告は取得量が平常に戻る（level='ok'）まで待つ
+  - `HealthStatus` に UNKNOWN は足していない（通知・status_history・共有ビュー・フロント・health-mcpまで波及するため）。フラグで表現している
 - **間欠的な行動は `event` + 90日/half_life 30 に揃える**（gcal_private / gcal_live / bookmeter / filmarks / kashidashi_cd）。7日/half_life 7 は「ほぼ毎日やること」向けの設定で、2週間に1回の行動に当てると次にやる頃には前回分が28%まで減衰し、スコアが一桁に張り付いて情報量が無くなる。CD貸出は「通館時にまとめて4枚」という形なので `baseline`（ゼロが異常）ではなく `event`。baselineのままだと健康軸を常時約13点押し下げていた（migration 046。基準値も16枚/7日→48枚/90日=週1回の通館×4枚に遡及再較正。旧値2.29枚/日は最も集中していた2026-03〜05の1.63枚/日でも届かない過大設定だった）
 - **運動カテゴリは2ソース**: strava（意図的な運動）+ oura_steps（日常の歩数）。運動していなくても体が動いていれば健康スコアが落ちない誤検知対策（migration 038）
 - **活力カテゴリは2ソース**: nextdns_vitality（DNSクエリ数）+ stash_vitality。**stashは実再生時間ベース**（migration 044）。再生回数だと「30分観た日」と「5秒で閉じた日」が同じ1playになり、体感と乖離していた（例: 2026-08-13は1play=ほぼ最低点だが実再生22分）。Stashは1回の再生ごとの長さを持たず `Scene.play_duration` に累積秒数しかないので、ingestごとにシーン単位のスナップショット（`stash_scene_state`）と差分を取り、増えた秒数だけを同期間に増えた `play_history` の日付へ配分する（ingestは1時間毎なので日付の取り違えはほぼ起きない）。初回だけ差分が取れないため累積値を全履歴に等分して過去日を推定。基準値は180 min/週（2026-03〜08の週次中央値181分）。旧基準70 plays/週は実測中央値39 playsの約1.8倍で、通常の週でも常時56点しか出ず活力が慢性的に低い主因だった
@@ -90,7 +97,7 @@
 
 - `backend/app/migrations/` に連番SQLファイル
 - init_db: `schema_migrations` テーブルで適用済みファイルを追跡し、各マイグレーションは1回だけ実行（2026-07-08導入。それ以前は起動ごとに全再実行され、UPDATE/DELETEのみのマイグレーションが設定やレコードを巻き戻していた）
-- 最新: 046（043は `043_notification_hold.sql` で使用済みなので採番の重複に注意）
+- 最新: 047（043は `043_notification_hold.sql` で使用済みなので採番の重複に注意）
 - **コード変更はリビルドが必要**: `docker compose build backend && docker compose up -d backend`
 
 ## Claude Code 時間計測のクライアント（全端末共通）
