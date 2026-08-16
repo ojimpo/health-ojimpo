@@ -224,6 +224,8 @@ async def check_and_notify() -> None:
     if not settings.notification_enabled:
         return
 
+    from . import notification_hold
+
     scores = await calculate_scores()
     curr_health = scores["health_status"]
     curr_cultural = scores["cultural_status"]
@@ -258,6 +260,9 @@ async def check_and_notify() -> None:
         )
         await db.commit()
 
+    # 確認中の保留があれば先に進める（リマインド送信・期限到達での自動配信・回復での取消）
+    await notification_hold.tick(scores)
+
     transitions = _detect_transitions(prev_health, prev_cultural, curr_health, curr_cultural)
     if not transitions:
         logger.info("No status transitions detected, skipping notification")
@@ -280,6 +285,16 @@ async def check_and_notify() -> None:
                 return
 
     logger.info("Status transitions detected: %s", transitions)
+
+    # 友人に配信する前に、本人へ確認を出して一段止める（services/notification_hold.py）。
+    # 本人が「大丈夫」と答えれば配信されず、無応答のまま期限を過ぎたときだけ配信される。
+    held = await notification_hold.open_hold(
+        transitions, curr_health.value, health_score, curr_cultural.value, cultural_score
+    )
+    if held:
+        logger.info("Notification held for owner confirmation: %s", transitions)
+        return
+
     await send_notifications(
         transitions, curr_health.value, health_score, curr_cultural.value, cultural_score
     )

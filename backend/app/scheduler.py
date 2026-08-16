@@ -45,6 +45,23 @@ def _send_source_health_report():
         loop.close()
 
 
+def _tick_notification_holds():
+    """配信保留の期限・リマインドを進める。ingestとは別に毎時回す。
+
+    ingest間隔（既定6時間）に相乗りさせるとCRITICALの2時間リマインドが機能せず、
+    自動配信も最大6時間遅れるため。
+    """
+    from .services.notification_hold import tick
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(tick())
+    except Exception:
+        logger.exception("Notification hold tick failed")
+    finally:
+        loop.close()
+
+
 def start_scheduler():
     global _scheduler
     _scheduler = BackgroundScheduler()
@@ -70,6 +87,12 @@ def start_scheduler():
         hour=settings.health_report_hour_utc,
         minute=5,
         id="source_health_weekly_report",
+    )
+    _scheduler.add_job(
+        _tick_notification_holds,
+        "interval",
+        hours=1,
+        id="notification_hold_tick",
     )
     _scheduler.start()
     logger.info(

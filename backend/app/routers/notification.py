@@ -132,8 +132,9 @@ async def unsubscribe(subscriber_id: int):
 async def line_webhook(request: Request):
     """Receive LINE Messaging API webhook events (follow/unfollow/postback/message).
 
-    postback は主観フィードバックの回答（sf:、services/subjective.py）と
-    リッチメニューコマンド（ingest:/menu:、services/line_menu.py）。
+    postback は主観フィードバックの回答（sf:、services/subjective.py）、
+    リッチメニューコマンド（ingest:/menu:、services/line_menu.py）、
+    配信確認への応答（nh:、services/notification_hold.py）。
     テキスト「ingest」も手動ingestトリガーとして扱う（いずれも本人のみ）。
     """
     body = await request.body()
@@ -209,12 +210,14 @@ async def line_webhook(request: Request):
 
     for event in deferred_events:
         try:
-            from ..services import line_menu
+            from ..services import line_menu, notification_hold
             from ..services.subjective import handle_postback_event
 
             data = (event.get("postback") or {}).get("data", "")
             if event.get("type") == "message" or data.startswith(line_menu.POSTBACK_PREFIXES):
                 await line_menu.handle_command_event(event)
+            elif data.startswith(notification_hold.POSTBACK_PREFIX):
+                await notification_hold.handle_postback_event(event)
             else:
                 await handle_postback_event(event)
         except Exception:
@@ -266,6 +269,20 @@ async def delete_subscriber(subscriber_id: int):
         )
         await db.commit()
     return {"status": "deleted"}
+
+
+@router.get("/holds")
+async def list_notification_holds(limit: int = 20):
+    """配信確認（本人への事前確認）の履歴（admin用）。"""
+    async with get_db_context() as db:
+        rows = await db.execute_fetchall(
+            """SELECT id, created_at, transitions, severity, health_status, cultural_status,
+                      health_score, cultural_score, prompts_sent, last_prompt_at,
+                      snoozes, release_after, status, resolved_at
+            FROM notification_holds ORDER BY id DESC LIMIT ?""",
+            (limit,),
+        )
+    return [dict(r) for r in rows]
 
 
 @router.get("/health-report")
