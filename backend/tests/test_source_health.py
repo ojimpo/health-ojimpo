@@ -2,7 +2,13 @@
 from datetime import date, timedelta
 
 from app import database
-from app.services.source_health import CLAUDE_CLIENT_VERSION, build_report, format_report
+from app.services import measurement_state as ms
+from app.services.source_health import (
+    CLAUDE_CLIENT_VERSION,
+    build_report,
+    format_report,
+    sync_measurement_state,
+)
 
 from .conftest import add_record, add_source
 
@@ -295,3 +301,87 @@ async def test_always_quiet_source_not_flagged(test_db):
     await add_record((VOL_TODAY - timedelta(days=1)).isoformat(), "quiet", "music", 1)
     report = await build_report(today=VOL_TODAY, token_checker=_no_token)
     assert report[0]["level"] == "ok"
+
+
+# --- 計測状態への反映（source_measurement_state との接続） ---
+
+
+async def test_token_failure_marks_broken(test_db):
+    await add_source("gcal_private", "calendar", classification="event")
+    await add_record(TODAY.isoformat(), "gcal_private", "calendar", 1)
+    await _add_oauth_token("gcal_private")
+    report = await build_report(today=TODAY, token_checker=_no_token)
+
+    assert (await sync_measurement_state(report))["marked"] == ["gcal_private"]
+    assert (await ms.get_broken_sources())["gcal_private"]["reason"] == ms.REASON_TOKEN
+
+
+async def test_failed_ingest_marks_broken(test_db):
+    await add_source("steam", "game", classification="event")
+    await add_record(TODAY.isoformat(), "steam", "game", 1)
+    await _add_ingest_log("steam", "failed", "boom")
+    report = await build_report(today=TODAY, token_checker=_no_token)
+
+    await sync_measurement_state(report)
+    assert (await ms.get_broken_sources())["steam"]["reason"] == ms.REASON_INGEST_FAILED
+
+
+async def test_volume_collapse_alone_never_marks_broken(test_db):
+    """取得量の急減は本物の低下と区別がつかないので、証拠として使わない。
+
+    ここが破れると、活動が減っただけのカテゴリが軸から消える。
+    """
+    await add_source("lastfm", "music", classification="baseline", base_value=1200)
+    await _fill_daily("lastfm", "music", VOL_TODAY - timedelta(days=97), 83, 170)
+    for offset in (12, 8, 2):
+        await add_record((VOL_TODAY - timedelta(days=offset)).isoformat(), "lastfm", "music", 5)
+
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert report[0]["volume_collapse"] is True      # 検知はする
+    assert report[0]["reason"] is None               # が、証拠にはしない
+    await sync_measurement_state(report)
+    assert await ms.get_broken_sources() == {}       # 軸からは外れない
+
+
+async def test_auto_reason_recovers_when_failure_clears(test_db):
+    await add_source("gcal_private", "calendar", classification="event")
+    await add_record(TODAY.isoformat(), "gcal_private", "calendar", 1)
+    await ms.mark_broken("gcal_private", ms.REASON_TOKEN)
+
+    report = await build_report(today=TODAY, token_checker=_valid_token)
+    assert (await sync_measurement_state(report))["recovered"] == ["gcal_private"]
+    assert await ms.get_broken_sources() == {}
+
+
+async def test_user_reported_needs_full_recovery(test_db):
+    """本人が『壊れている』と言った状態は、取得量まで戻って初めて解除する。"""
+    await add_source("lastfm", "music", classification="baseline", base_value=1200)
+    await _fill_daily("lastfm", "music", VOL_TODAY - timedelta(days=97), 83, 170)
+    for offset in (12, 8, 2):
+        await add_record((VOL_TODAY - timedelta(days=offset)).isoformat(), "lastfm", "music", 5)
+    await ms.mark_broken("lastfm", ms.REASON_USER_REPORTED)
+
+    # まだ取得量が戻っていない（level='warn'）→ 解除しない
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    await sync_measurement_state(report)
+    assert "lastfm" in await ms.get_broken_sources()
+
+    # 平常量に戻る（level='ok'）→ 自動で解除。
+    # 既存レコードと衝突しないよう、以降の日付を埋めて基準日を進める。
+    later = VOL_TODAY + timedelta(days=20)
+    await _fill_daily("lastfm", "music", VOL_TODAY + timedelta(days=1), 20, 170)
+    report = await build_report(today=later, token_checker=_no_token)
+    assert report[0]["level"] == "ok"
+    assert (await sync_measurement_state(report))["recovered"] == ["lastfm"]
+
+
+async def test_report_lists_excluded_sources(test_db):
+    """除外中のソースを黙って消さず、レポートに必ず出す。"""
+    await add_source("lastfm", "music", classification="baseline")
+    await add_record(TODAY.isoformat(), "lastfm", "music", 10)
+    await ms.mark_broken("lastfm", ms.REASON_USER_REPORTED)
+
+    report = await build_report(today=TODAY, token_checker=_no_token)
+    text = format_report(report, today=TODAY, broken=await ms.get_broken_sources())
+    assert "スコアから除外中（1件）" in text
+    assert "本人申告" in text

@@ -26,6 +26,7 @@ from datetime import date, timedelta
 from ..config import settings
 from ..database import get_db_context
 from ..sources import strava as strava_source
+from . import measurement_state
 from .line_notify import send_line_notification
 from .oauth import get_valid_token
 
@@ -275,11 +276,17 @@ async def build_report(today: date | None = None, token_checker=_check_token) ->
             token_ok = await token_checker(source_id) is not None
 
         stale_limit = STALE_DAYS_EVENT if classification == "event" else STALE_DAYS_DAILY
+        # reason は「計測が壊れている証拠」の種類。measurement_state がこれを見て
+        # 軸集計から外すので、曖昧なもの（取得量の急減）には付けない。
+        reason = None
+        collapsed = False
         if token_ok is False:
             level, detail = "broken", "OAuthトークン失効 — 要再認証"
+            reason = measurement_state.REASON_TOKEN
         elif ingest_status == "failed":
             level = "broken"
             detail = f"直近ingest失敗: {(ingest_error or '')[:60]}"
+            reason = measurement_state.REASON_INGEST_FAILED
         elif days_since is None:
             level, detail = "warn", "データなし"
         elif days_since > stale_limit:
@@ -291,6 +298,7 @@ async def build_report(today: date | None = None, token_checker=_check_token) ->
         ):
             recent, median = collapse
             level = "warn"
+            collapsed = True
             detail = (
                 f"取得量が急減（直近{VOLUME_WINDOW_DAYS}日 {recent:,.0f} / "
                 f"平常時 {median:,.0f} = {recent / median * 100:.0f}%）"
@@ -306,6 +314,10 @@ async def build_report(today: date | None = None, token_checker=_check_token) ->
             "last_date": last_date,
             "days_since": days_since,
             "oauth": token_ok is not None,
+            "reason": reason,
+            # 取得量の急減。これ自体は壊れている証拠にしない（本物の低下と区別が
+            # つかない）。本人に聞くきっかけとしてだけ使う。
+            "volume_collapse": collapsed,
         })
 
     if any(r["id"] == "claude" for r in report):
@@ -316,7 +328,49 @@ async def build_report(today: date | None = None, token_checker=_check_token) ->
     return report
 
 
-def format_report(report: list[dict], today: date | None = None) -> str:
+async def sync_measurement_state(report: list[dict]) -> dict[str, list[str]]:
+    """レポートの判定を source_measurement_state に反映する。
+
+    機械的に確実な障害（トークン失効・ingest失敗）だけを broken にする。
+    取得量の急減は本物の低下と区別がつかないので、ここでは触らない
+    （本人に聞いた結果 reason='user_reported' が付くのは別経路）。
+
+    復帰の条件は理由によって変える:
+    - 自動判定（token / ingest_failed）は、その障害が消えれば戻す。
+      別の理由で warn が残っていても、技術的障害としては解消している。
+    - 本人申告は level=='ok'（取得量まで平常に戻った）を要求する。
+      本人が「壊れている」と言った状態は、データが本当に戻るまで続くとみなす。
+    """
+    broken_now = await measurement_state.get_broken_sources()
+    marked: list[str] = []
+    recovered: list[str] = []
+
+    for r in report:
+        source_id, level, reason = r["id"], r["level"], r.get("reason")
+        if level == "broken" and reason:
+            if await measurement_state.mark_broken(source_id, reason, r["detail"]):
+                marked.append(source_id)
+            continue
+
+        current = broken_now.get(source_id)
+        if not current:
+            continue
+        if current["reason"] == measurement_state.REASON_USER_REPORTED:
+            if level == "ok" and await measurement_state.mark_ok(source_id):
+                recovered.append(source_id)
+        elif await measurement_state.mark_ok(source_id):
+            recovered.append(source_id)
+
+    if marked or recovered:
+        logger.info(
+            "Measurement state synced: broken=%s recovered=%s", marked, recovered
+        )
+    return {"marked": marked, "recovered": recovered}
+
+
+def format_report(
+    report: list[dict], today: date | None = None, broken: dict[str, dict] | None = None
+) -> str:
     if today is None:
         today = date.today()
     counts = {"broken": 0, "warn": 0, "ok": 0}
@@ -338,15 +392,33 @@ def format_report(report: list[dict], today: date | None = None) -> str:
 
     if counts["broken"] == 0 and counts["warn"] == 0:
         lines.append("\n全ソース正常です ✨")
+
+    # 軸から外しているソースは必ず明示する。黙って外すと「全部正常」に見えてしまい、
+    # それこそがソース悪化の見逃しになる。
+    if broken:
+        names = {r["id"]: r["name"] for r in report}
+        lines.append(f"\n⚪ スコアから除外中（{len(broken)}件）")
+        for source_id, info in sorted(broken.items()):
+            label = measurement_state.REASON_LABELS.get(info["reason"], info["reason"] or "不明")
+            lines.append(f"　{names.get(source_id, source_id)} — {label}")
+        lines.append("　※ 復旧すると自動で戻ります")
     return "\n".join(lines)
 
 
 async def send_weekly_report() -> bool:
-    """週次レポートを本人のLINEに送る。宛先はLINE_OWNER_USER_IDのみ。"""
+    """週次レポートを本人のLINEに送る。宛先はLINE_OWNER_USER_IDのみ。
+
+    レポートを組むついでに計測状態も同期する。トークンの生存確認は実refreshを
+    伴って重いので、これを回すこの週次のタイミングに合わせている。
+    """
     if not settings.line_owner_user_id:
         logger.info("Source health report: LINE_OWNER_USER_ID not configured, skipping")
         return False
     report = await build_report()
-    await send_line_notification(settings.line_owner_user_id, format_report(report))
+    await sync_measurement_state(report)
+    broken = await measurement_state.get_broken_sources()
+    await send_line_notification(
+        settings.line_owner_user_id, format_report(report, broken=broken)
+    )
     logger.info("Source health report sent (%d sources)", len(report))
     return True
