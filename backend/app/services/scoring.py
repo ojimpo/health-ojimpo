@@ -15,6 +15,11 @@ Aggregation: per-source scores are averaged within each category
 (category = one indicator), then category scores are capped at
 ``CATEGORY_SCORE_CAP`` and averaged into the health / cultural axes.
 See ``calculate_scores``.
+
+Sources whose measurement is known to be broken are left out of their
+category's average (see ``services/measurement_state.py``). A low score is
+never a reason to exclude — only positive evidence of a broken measurement
+is — so a genuine drop in activity still shows up as a low score.
 """
 import json
 import logging
@@ -24,6 +29,7 @@ from datetime import date, timedelta
 
 from ..database import get_db_context
 from ..models.enums import CulturalStatus, HealthStatus
+from . import measurement_state
 
 logger = logging.getLogger(__name__)
 
@@ -342,20 +348,23 @@ async def calculate_scores(for_date: date | None = None) -> dict:
             score_cache[source_id], _, _ = await calculate_source_score(source_id, for_date)
         return score_cache[source_id]
 
-    baseline_cats: dict[str, list[float]] = {}
+    baseline_cats: dict[str, list[tuple[str, float]]] = {}
     for source_id, category in filter(started, baseline_rows):
-        baseline_cats.setdefault(category, []).append(await source_score(source_id))
+        baseline_cats.setdefault(category, []).append((source_id, await source_score(source_id)))
 
-    activity_cats: dict[str, list[float]] = {}
+    activity_cats: dict[str, list[tuple[str, float]]] = {}
     for source_id, category in filter(started, activity_rows):
-        activity_cats.setdefault(category, []).append(await source_score(source_id))
+        activity_cats.setdefault(category, []).append((source_id, await source_score(source_id)))
 
-    baseline_cat_scores = [
-        min(sum(v) / len(v), CATEGORY_SCORE_CAP) for v in baseline_cats.values()
-    ]
-    activity_cat_scores = [
-        min(sum(v) / len(v), CATEGORY_SCORE_CAP) for v in activity_cats.values()
-    ]
+    # 計測が壊れていると分かっているソースは平均から除く。除外の条件は「値が低い」
+    # ことではなく壊れている証拠なので、本物の活動低下は0点のまま軸に残る。
+    # 全ソースが壊れたカテゴリは計測不能として軸から外れる。
+    broken = await measurement_state.get_broken_sources()
+    baseline_scores, health_unmeasured = measurement_state.category_scores(baseline_cats, broken)
+    activity_scores, cultural_unmeasured = measurement_state.category_scores(activity_cats, broken)
+
+    baseline_cat_scores = [min(v, CATEGORY_SCORE_CAP) for v in baseline_scores.values()]
+    activity_cat_scores = [min(v, CATEGORY_SCORE_CAP) for v in activity_scores.values()]
 
     baseline_avg = sum(baseline_cat_scores) / len(baseline_cat_scores) if baseline_cat_scores else 0
     cultural_pct = sum(activity_cat_scores) / len(activity_cat_scores) if activity_cat_scores else 0
@@ -367,4 +376,10 @@ async def calculate_scores(for_date: date | None = None) -> dict:
         "cultural_pct": round(cultural_pct, 1),
         "cultural_status": cultural_status_from_score(cultural_pct, thresholds),
         "activity_total": round(activity_total, 1),
+        # 計測できているカテゴリが足りているか。False のときスコアは当てにならないので、
+        # 通知や表示側はこの数字を根拠に断定してはいけない。
+        "health_measurable": measurement_state.axis_is_measurable(len(baseline_cat_scores)),
+        "cultural_measurable": measurement_state.axis_is_measurable(len(activity_cat_scores)),
+        "health_unmeasured": health_unmeasured,
+        "cultural_unmeasured": cultural_unmeasured,
     }

@@ -10,6 +10,8 @@ from app.services.scoring import (
     get_effective_baseline,
     get_source_first_dates,
 )
+from app.services import measurement_state as ms
+
 from .conftest import add_baseline_history, add_record, add_source
 
 # A fixed past date so the "today bonus" branch stays out of the way.
@@ -287,3 +289,86 @@ async def test_get_source_first_dates(test_db):
     await add_record("2026-01-03", "a", "music", 1)
     first = await get_source_first_dates()
     assert first == {"a": "2026-01-03"}
+
+
+# --- 計測が壊れているソースの除外（migration 047 / measurement_state.py） ---
+
+
+class TestBrokenSourceExclusion:
+    """除外の条件は「値が低い」ことではなく壊れている証拠であること。"""
+
+    async def test_low_score_still_drags_the_axis(self, test_db):
+        """本物の活動低下は消さない。ここが消えると健康軸の意味が無くなる。
+
+        壊れている証拠が無い限り、スコアがどれだけ低くても軸に残り続ける。
+        """
+        await add_source("lastfm", "music", base_value=100, classification="baseline")
+        await add_source("strava", "exercise", base_value=100, classification="baseline")
+        await add_source("oura", "sleep", base_value=100, classification="baseline")
+        await add_record(PAST.isoformat(), "strava", "exercise", 100)
+        await add_record(PAST.isoformat(), "oura", "sleep", 100)
+        # 記録が完全に無いソースは started フィルタで元から軸に入らないので、
+        # 「参加しているが極端に低い」状態を作る（今回の音楽 8点 と同じ形）
+        await add_record(PAST.isoformat(), "lastfm", "music", 1)
+
+        # music は極端に低いが、壊れているとは記録していない
+        with_zero = await calculate_scores(PAST)
+        assert with_zero["health_unmeasured"] == []
+
+        # 同じ0点でも「壊れている」と分かれば外れ、その分だけ軸は上がる
+        await ms.mark_broken("lastfm", ms.REASON_USER_REPORTED)
+        excluded = await calculate_scores(PAST)
+        assert excluded["health_unmeasured"] == ["music"]
+        assert excluded["baseline_avg"] > with_zero["baseline_avg"]
+
+    async def test_broken_source_leaves_the_axis(self, test_db):
+        await add_source("lastfm", "music", base_value=100, classification="baseline")
+        await add_source("strava", "exercise", base_value=100, classification="baseline")
+        await add_source("oura", "sleep", base_value=100, classification="baseline")
+        await add_record(PAST.isoformat(), "lastfm", "music", 1)
+        await add_record(PAST.isoformat(), "strava", "exercise", 100)
+        await add_record(PAST.isoformat(), "oura", "sleep", 100)
+        before = await calculate_scores(PAST)
+        await ms.mark_broken("lastfm", ms.REASON_USER_REPORTED)
+        after = await calculate_scores(PAST)
+
+        assert before["health_unmeasured"] == []
+        assert after["health_unmeasured"] == ["music"]
+        # 壊れた music を除いた残り2カテゴリだけの平均になる
+        assert after["baseline_avg"] > before["baseline_avg"]
+
+    async def test_surviving_source_keeps_category_measured(self, test_db):
+        """運動は strava + oura_steps。片方が壊れても生きている側で計測が続く。"""
+        await add_source("strava", "exercise", base_value=100, classification="baseline")
+        await add_source("oura_steps", "exercise", base_value=100, classification="baseline")
+        await add_source("oura", "sleep", base_value=100, classification="baseline")
+        await add_source("lastfm", "music", base_value=100, classification="baseline")
+        for s in ("strava", "oura_steps"):
+            await add_record(PAST.isoformat(), s, "exercise", 100)
+        await add_record(PAST.isoformat(), "oura", "sleep", 100)
+        await add_record(PAST.isoformat(), "lastfm", "music", 100)
+        await ms.mark_broken("strava", ms.REASON_TOKEN)
+
+        scores = await calculate_scores(PAST)
+        assert scores["health_unmeasured"] == []      # 運動は計測できている
+        assert scores["health_measurable"] is True
+
+    async def test_axis_becomes_unmeasurable_when_too_few_remain(self, test_db):
+        """壊れたソースを外し続けて「1カテゴリだけ満点」になるのを防ぐ安全弁。"""
+        for sid, cat in (("lastfm", "music"), ("strava", "exercise"), ("oura", "sleep")):
+            await add_source(sid, cat, base_value=100, classification="baseline")
+            await add_record(PAST.isoformat(), sid, cat, 100)
+        await ms.mark_broken("lastfm", ms.REASON_USER_REPORTED)
+        await ms.mark_broken("strava", ms.REASON_TOKEN)
+
+        scores = await calculate_scores(PAST)
+        assert sorted(scores["health_unmeasured"]) == ["exercise", "music"]
+        assert scores["health_measurable"] is False   # 残り1カテゴリでは軸を名乗らせない
+
+    async def test_recovery_puts_the_category_back(self, test_db):
+        await add_source("lastfm", "music", base_value=100, classification="baseline")
+        await add_record(PAST.isoformat(), "lastfm", "music", 100)
+        await ms.mark_broken("lastfm", ms.REASON_USER_REPORTED)
+        assert (await calculate_scores(PAST))["health_unmeasured"] == ["music"]
+        await ms.mark_ok("lastfm")
+        assert (await calculate_scores(PAST))["health_unmeasured"] == []
