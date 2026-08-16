@@ -1,7 +1,13 @@
-"""Stash Vitality — local media manager play/o history as vitality proxy.
+"""Stash Vitality — local media manager playback time as vitality proxy.
 
-Fetches play_history and o_history from Stash GraphQL API,
-aggregates into daily counts, and merges into the vitality category.
+Fetches play_history / o_history / play_duration from the Stash GraphQL API,
+aggregates into daily playback minutes, and merges into the vitality category.
+
+スコアの元は play_count ではなく実再生時間（play_seconds）。Stash は1回の再生ごとの
+長さを保持せず Scene.play_duration に累積秒数しか持たないので、ingest ごとにシーン単位の
+スナップショット（stash_scene_state）と比較し、増えた分だけをその間に増えた
+play_history の日付へ配分する。初回だけは差分が取れないので、累積再生時間を
+そのシーンの全再生履歴に等分して過去日を埋める（推定値）。
 """
 
 import json
@@ -26,6 +32,9 @@ query($page: Int!) {
   ) {
     count
     scenes {
+      id
+      play_duration
+      last_played_at
       play_history
       o_history
     }
@@ -42,14 +51,8 @@ class StashVitalityAdapter(SourceAdapter):
         return bool(settings.stash_api_key)
 
     async def fetch_and_store(self, from_date: str | None = None) -> tuple[int, int]:
-        if not from_date:
-            last_ts = await self.get_last_timestamp()
-            if last_ts:
-                dt = datetime.fromtimestamp(last_ts, tz=timezone.utc)
-                from_date = dt.strftime("%Y-%m-%d")
-            else:
-                from_date = "2025-01-01"
-
+        # Stash は毎回フル履歴を返すので回数は常に全期間を再計算する（冪等）。
+        # 再生時間だけは差分加算なので from_date は使わない。
         headers = {
             "Content-Type": "application/json",
             "ApiKey": settings.stash_api_key,
@@ -57,6 +60,7 @@ class StashVitalityAdapter(SourceAdapter):
 
         plays_by_day: dict[str, int] = defaultdict(int)
         o_by_day: dict[str, int] = defaultdict(int)
+        scenes_all: list[dict] = []
 
         async with httpx.AsyncClient(timeout=30) as client:
             page = 1

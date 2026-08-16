@@ -51,6 +51,8 @@
 - **主観フィードバック**: 毎晩12:00 UTC（21:00 JST）にLINEで本人にのみ3択質問（良い/普通/悪い）→ 既存の `/api/notification/line/webhook`（follow/unfollow購読と共用）でpostback受信 → `subjective_feedback` にスコアスナップショットと共に保存（migration 039）。スコア校正の正解データ蓄積用
 - **gcalの複数日イベントは日割り展開**: 旅行等は期間中の各日に1回ずつ計上（終日イベントのend_dateはexclusive扱い、時刻ありの日またぎは開始日のみ、30日で打ち切り）
 - **週次ソースヘルスレポート**: 毎週日曜12:05 UTC（21:05 JST）に全アクティブソースの取得健全性を本人LINEにのみ通知（`services/source_health.py`）。OAuthトークンは実refreshで失効検知、データ途絶はbaseline系3日/event系45日で警告。プレビュー: `GET /api/notification/health-report`
+  - **取得量の急減も検知する**（2026-08-16追加）。直近14日の合計が直前6窓（84日）の中央値の30%未満なら警告。存在チェックだけだと**量の崩壊が見えない**: lastfmはSpotify連携失効でscrobbleが100〜140件/日→週数件に崩壊したが、Pano Scrobbler/Plexが数日おきに数件送り続けたため「最終データ0〜2日前」で8週間ok判定だった。閾値30%は実データ16週のバックテストで決定（誤検知0、障害の9日後に検知）
+  - 対象は `classification != 'event'` かつ `score_method != 'daily_avg'`。状態系(oura)のraw_valueは「量」でなくスケールも混在するため（stress 900〜2700がsleep/readiness 0〜100を飲み込む）除外。履歴が98日分揃わないソース、平常時が基準値期待量の半分未満のソースも判定しない
 - **LINEリッチメニュー（手動トリガー3ボタン、本人にのみリンク・友人には非表示）**: INGEST=全ソース取り込み（テキスト「ingest」も可、多重実行ガードあり、完了サマリをpush）/ HEALTH=ソースヘルスレポート即時送信 / MOOD=調子の3択質問即時送信。`services/line_menu.py`（postback `ingest:run` / `menu:health` / `menu:subjective`）。`POST /api/ingest/trigger` はBearer認証必須（WEBHOOK_SECRET）+ `source: "all"` 対応。リッチメニュー登録: `python3 scripts/setup_line_richmenu.py`（ホストで実行）
 - **文化的指標**: display_type=activity/card_only カテゴリの平均 → RICH/MODERATE/LOW
 - 総合スコアを1つにまとめない。2軸で独立して表示

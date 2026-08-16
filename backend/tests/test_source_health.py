@@ -1,5 +1,5 @@
 """Tests for the weekly source health report + migration re-run guard."""
-from datetime import date
+from datetime import date, timedelta
 
 from app import database
 from app.services.source_health import build_report, format_report
@@ -117,3 +117,90 @@ async def test_migrations_do_not_rerun(test_db):
             "SELECT COUNT(*) FROM activity_records WHERE source = 'claude'"
         )
     assert rows[0][0] == 1
+
+
+# --- 取得量の急減（2026-08のlastfm事故: データは来ているのに量が崩壊していた） ---
+
+VOL_TODAY = date(2026, 8, 16)
+
+
+async def _fill_daily(source: str, category: str, start: date, days: int, value: float):
+    for i in range(days):
+        await add_record((start + timedelta(days=i)).isoformat(), source, category, value)
+
+
+async def test_volume_collapse_warns_while_data_still_trickles(test_db):
+    """最終データが1日前でも、量が平常時から崩壊していれば警告する。
+
+    これが今回の再発防止の本体。存在チェックだけだと数日おきに1件でも入れば
+    「最終データ1日前」でokになり、8週間気付けなかった。
+    """
+    await add_source("lastfm", "music", classification="baseline", base_value=1200)
+    # 98日前〜15日前は平常運転（毎日170分＝基準1200分/週相当）
+    await _fill_daily("lastfm", "music", VOL_TODAY - timedelta(days=97), 83, 170)
+    # 直近14日は数日おきに数分だけ（スクロブラー停止後の実際の形）
+    for offset in (12, 8, 2):
+        await add_record((VOL_TODAY - timedelta(days=offset)).isoformat(), "lastfm", "music", 5)
+
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert report[0]["level"] == "warn"
+    assert "取得量が急減" in report[0]["detail"]
+    assert report[0]["days_since"] == 2  # 途絶チェックだけならokだった
+
+
+async def test_steady_source_is_ok(test_db):
+    await add_source("lastfm", "music", classification="baseline", base_value=1200)
+    await _fill_daily("lastfm", "music", VOL_TODAY - timedelta(days=97), 98, 170)
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert report[0]["level"] == "ok"
+
+
+async def test_mild_dip_is_not_flagged(test_db):
+    """平常時の半分程度に落ちた程度では鳴らさない（閾値30%）。"""
+    await add_source("lastfm", "music", classification="baseline", base_value=1200)
+    await _fill_daily("lastfm", "music", VOL_TODAY - timedelta(days=97), 84, 170)
+    await _fill_daily("lastfm", "music", VOL_TODAY - timedelta(days=13), 14, 85)
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert report[0]["level"] == "ok"
+
+
+async def test_event_source_volume_not_checked(test_db):
+    """event系はゼロでも正常なので取得量では判定しない。"""
+    await add_source("filmarks", "movie", classification="event", base_value=6,
+                     aggregation_period=90)
+    await _fill_daily("filmarks", "movie", VOL_TODAY - timedelta(days=97), 84, 2)
+    await add_record((VOL_TODAY - timedelta(days=1)).isoformat(), "filmarks", "movie", 1)
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert report[0]["level"] == "ok"
+
+
+async def test_daily_avg_source_volume_not_checked(test_db):
+    """状態系(daily_avg)はraw_valueが『量』でないので対象外。
+
+    ouraはstress(900〜2700)がsleep/readiness(0〜100)を飲み込むため、合計の増減を
+    取得障害とみなすと誤検知する。欠測は日数ベースの途絶チェックで拾う。
+    """
+    await add_source("oura", "sleep", classification="baseline", base_value=80,
+                     score_method="daily_avg")
+    await _fill_daily("oura", "sleep", VOL_TODAY - timedelta(days=97), 84, 2000)
+    await _fill_daily("oura", "sleep", VOL_TODAY - timedelta(days=13), 14, 100)
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert report[0]["level"] == "ok"
+
+
+async def test_new_source_without_history_not_flagged(test_db):
+    """履歴が揃っていない新規ソースは比較対象がないので判定しない。"""
+    await add_source("newsrc", "music", classification="baseline", base_value=1200)
+    await _fill_daily("newsrc", "music", VOL_TODAY - timedelta(days=20), 7, 170)
+    await add_record((VOL_TODAY - timedelta(days=1)).isoformat(), "newsrc", "music", 5)
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert report[0]["level"] == "ok"
+
+
+async def test_always_quiet_source_not_flagged(test_db):
+    """元々基準値に遠く届かないソースは毎週鳴らしても意味がないので判定しない。"""
+    await add_source("quiet", "music", classification="baseline", base_value=1200)
+    await _fill_daily("quiet", "music", VOL_TODAY - timedelta(days=97), 84, 3)
+    await add_record((VOL_TODAY - timedelta(days=1)).isoformat(), "quiet", "music", 1)
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert report[0]["level"] == "ok"
