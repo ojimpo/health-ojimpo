@@ -95,6 +95,13 @@ class Settings(BaseSettings):
 
     # Notification
     notification_enabled: bool = False
+    # 友人への配信前に本人へLINEで確認を出す安全装置（services/notification_hold.py）。
+    # LINE_OWNER_USER_ID が未設定なら自動的に無効（＝従来どおり即時配信）
+    notification_hold_enabled: bool = True
+    # 本人が無応答のまま何時間で実際に配信するか。
+    # CRITICALは「応答できない状態そのもの」が警告理由なので短くする
+    notification_hold_hours: int = 24
+    notification_hold_hours_critical: int = 6
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
