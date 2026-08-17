@@ -95,7 +95,9 @@ async def test_not_asked_again_within_interval(test_db, owner, sent):
     await add_source("lastfm", "music")
     await ask.ask_about_collapses(_report(), now=NOW)
     assert await ask.ask_about_collapses(_report(), now=NOW + timedelta(days=7)) == []
-    later = NOW + timedelta(days=ask.ASK_INTERVAL_DAYS + 1)
+    # record_asked は実時刻(datetime('now'))で記録するので、固定NOWからの相対だと
+    # 実行時刻によって14日に届かないことがある。実時刻基準で間隔を超えさせる。
+    later = datetime.now(timezone.utc) + timedelta(days=ask.ASK_INTERVAL_DAYS + 1)
     assert await ask.ask_about_collapses(_report(), now=later) == ["lastfm"]
 
 
