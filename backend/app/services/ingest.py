@@ -74,6 +74,14 @@ async def run_all_ingest():
         except Exception:
             logger.exception("Failed to ingest %s", adapter.source_id)
 
+    # Spotify recently-played の影データ取り込み + Last.fm 乖離チェック
+    try:
+        from .spotify_plays import check_lastfm_divergence, ingest_recent_plays
+        await ingest_recent_plays()
+        await check_lastfm_divergence()
+    except Exception:
+        logger.exception("Spotify play history check failed")
+
     # Check for status transitions and send notifications
     try:
         from .notification import check_and_notify
