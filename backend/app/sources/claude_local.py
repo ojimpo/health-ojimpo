@@ -13,6 +13,10 @@ class ClaudeLocalAdapter(SourceAdapter):
     旧トークンベース集計から切り替え。各クライアントマシン（arigato-nas含む）の
     Stopフックが日次の作業分数をPOSTしてくる。host列でディザンビゲートし、
     aggregate時にdate単位で合算する。
+
+    host は人間が読む端末名、instance_id はその端末の世代（migration 049）。
+    端末を組み直すとクライアント側のstateが消えて新しいinstance_idになるので、
+    名前を変えずに世代を分けられる。合算はdate単位なので世代が増えても影響しない。
     """
 
     source_id = "claude"
@@ -32,30 +36,36 @@ class ClaudeLocalAdapter(SourceAdapter):
         minutes: float,
         host: str = "unknown",
         version: str | None = None,
+        instance_id: str | None = None,
     ) -> None:
-        """ホスト別の日次作業分数を保存（同date+host内で最大値を採用）。
+        """ホスト別の日次作業分数を保存（同date+host+instance内で最大値を採用）。
 
         フックは1日のうち何度も呼ばれうるが、毎回当日全体の累積分数を計算して
         送ってくる前提なので、追加ではなく最大値で更新する（リトライ・重複耐性）。
 
         client_version は分数と違い常に上書きする（端末のスクリプト版は最新の
         申告が正しい。NULL = versionを送らない旧スクリプト）。
+
+        instance_id 未指定（v2以前のクライアント）は host 名をそのまま世代IDとして
+        扱う。migration 049 が既存行に入れた値と同じなので、端末を更新するまでは
+        従来どおり1世代のまま動き続ける。
         """
+        instance = instance_id or host
         async with get_db_context() as db:
             await db.execute(
                 """INSERT INTO claude_session_minutes
-                (date, host, minutes, updated_at, client_version)
-                VALUES (?, ?, ?, datetime('now'), ?)
-                ON CONFLICT(date, host) DO UPDATE SET
+                (date, host, instance_id, minutes, updated_at, client_version)
+                VALUES (?, ?, ?, ?, datetime('now'), ?)
+                ON CONFLICT(date, host, instance_id) DO UPDATE SET
                     minutes = MAX(claude_session_minutes.minutes, excluded.minutes),
                     updated_at = excluded.updated_at,
                     client_version = excluded.client_version""",
-                (webhook_date, host, minutes, version),
+                (webhook_date, host, instance, minutes, version),
             )
             await db.commit()
         logger.info(
-            "claude session: host=%s date=%s minutes=%.1f version=%s stored",
-            host, webhook_date, minutes, version or "v1",
+            "claude session: host=%s instance=%s date=%s minutes=%.1f version=%s stored",
+            host, instance, webhook_date, minutes, version or "v1",
         )
 
     async def aggregate(self) -> None:
@@ -68,11 +78,17 @@ class ClaudeLocalAdapter(SourceAdapter):
                     date,
                     'claude',
                     'coding',
-                    ROUND(SUM(minutes), 1),
-                    ROUND(SUM(minutes), 1),
+                    ROUND(SUM(host_minutes), 1),
+                    ROUND(SUM(host_minutes), 1),
                     'min',
-                    json_object('hosts', json_group_array(json_object('host', host, 'minutes', ROUND(minutes, 1))))
-                FROM claude_session_minutes
+                    json_object('hosts', json_group_array(json_object('host', host, 'minutes', ROUND(host_minutes, 1))))
+                FROM (
+                    -- 世代交代の日は同じ端末が2 instance分の行を持つ。metadataは
+                    -- 端末ごとに1エントリで見せたいので、先にhostで畳んでおく
+                    SELECT date, host, SUM(minutes) AS host_minutes
+                    FROM claude_session_minutes
+                    GROUP BY date, host
+                )
                 GROUP BY date
                 """,
             )

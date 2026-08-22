@@ -124,14 +124,14 @@ def _volume_collapse(
 # ソース単位では生きて見える**。実際 arigato-nas は 2026-05-26 から3ヶ月無音だったのに
 # （.env のクォート漏れで source が失敗し set -e でフックごと死んでいた）、
 # 他端末が送り続けたため一度も警告が出なかった。lastfm の量崩壊と同型の穴。
-CLAUDE_CLIENT_VERSION = "2"  # scripts/claude_session_report.py の VERSION と揃える
+CLAUDE_CLIENT_VERSION = "3"  # scripts/claude_session_report.py の VERSION と揃える
 # 端末ごとの「送ってこない普通の間隔」は大きく違う（常時稼働のNASと、たまに触る
 # Windows機を同じ日数で測れない）。各端末の過去の間隔の中央値から閾値を作る。
 CLAUDE_HOST_MIN_RECORDS = 5  # 履歴が短い端末は判定しない
 CLAUDE_HOST_GAP_MULTIPLIER = 4
 CLAUDE_HOST_MIN_SILENT_DAYS = 7  # 毎日動く端末でもこれ未満では鳴らさない
 CLAUDE_HOST_MAX_SILENT_DAYS = 60  # 間隔が粗い端末でもこれを超えたら鳴らす
-CLAUDE_HOST_RETIRE_DAYS = 120  # これ以上沈黙した端末は「引退」とみなし鳴らし続けない
+CLAUDE_HOST_RETIRE_DAYS = 120  # 後継世代の無いまま沈黙した端末の諦め時（世代交代は即引退）
 CLAUDE_HOST_VERSION_ACTIVE_DAYS = 30  # 現役端末だけバージョンを問う
 
 
@@ -146,21 +146,36 @@ def _host_silence_limit(dates: list[date]) -> int:
 
 
 async def _claude_host_rows(today: date) -> list[dict]:
-    """Claude Code の端末ごとの健全性を評価した行を返す（正常な端末は返さない）。"""
+    """Claude Code の端末ごとの健全性を評価した行を返す（正常な端末は返さない）。
+
+    端末は (host, instance_id) で世代管理する（migration 049）。**より新しい世代が
+    存在する古い世代は「引退した」と断定できるので鳴らさない。** 以前は host しか
+    無く、組み直しで改名した旧hostが「引退」か「フックの故障」か区別できず、
+    CLAUDE_HOST_RETIRE_DAYS(120日) の沈黙を待つまで毎週警告が出続けていた。
+    """
     async with get_db_context() as db:
         rows = await db.execute_fetchall(
-            """SELECT host, date, client_version FROM claude_session_minutes
-            ORDER BY host, date"""
+            """SELECT host, instance_id, date, client_version FROM claude_session_minutes
+            ORDER BY host, instance_id, date"""
         )
 
-    by_host: dict[str, list[date]] = {}
-    versions: dict[str, str | None] = {}
-    for host, d, version in rows:
-        by_host.setdefault(host, []).append(date.fromisoformat(d))
-        versions[host] = version  # date順なので最新の申告が残る
+    by_instance: dict[tuple[str, str], list[date]] = {}
+    versions: dict[tuple[str, str], str | None] = {}
+    for host, instance, d, version in rows:
+        key = (host, instance)
+        by_instance.setdefault(key, []).append(date.fromisoformat(d))
+        versions[key] = version  # date順なので最新の申告が残る
+
+    # 端末ごとに現役の世代を1つだけ選ぶ。最終送信日が同じ日に並ぶ交代当日は、
+    # 後から使い始めた方（初回送信日が新しい方）を現役とみなす。
+    current: dict[str, tuple[str, list[date]]] = {}
+    for (host, instance), dates in by_instance.items():
+        cur = current.get(host)
+        if cur is None or (dates[-1], dates[0]) > (cur[1][-1], cur[1][0]):
+            current[host] = (instance, dates)
 
     out = []
-    for host, dates in sorted(by_host.items()):
+    for host, (instance, dates) in sorted(current.items()):
         days_since = (today - dates[-1]).days
         if days_since > CLAUDE_HOST_RETIRE_DAYS or len(dates) < CLAUDE_HOST_MIN_RECORDS:
             continue
@@ -173,10 +188,10 @@ async def _claude_host_rows(today: date) -> list[dict]:
             )
         elif (
             days_since <= CLAUDE_HOST_VERSION_ACTIVE_DAYS
-            and (versions[host] or "1") != CLAUDE_CLIENT_VERSION
+            and (versions[(host, instance)] or "1") != CLAUDE_CLIENT_VERSION
         ):
             detail = (
-                f"レポータ v{versions[host] or '1'}（現行 v{CLAUDE_CLIENT_VERSION}）"
+                f"レポータ v{versions[(host, instance)] or '1'}（現行 v{CLAUDE_CLIENT_VERSION}）"
                 " — 再インストール推奨"
             )
         else:

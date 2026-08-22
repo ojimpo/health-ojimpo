@@ -144,8 +144,9 @@ class ClaudeSessionPayload(BaseModel):
     """Claude Codeのフックから送られてくる日次作業分数。"""
     date: str  # YYYY-MM-DD（端末ローカル日付）
     minutes: float  # 当日の累積作業分数
-    host: str  # クライアント識別子（端末を組み直したら変える）
+    host: str  # 端末の名前（人間が読む識別子。組み直しても変えない）
     version: str | None = None  # レポータのバージョン（未指定=v1の旧スクリプト）
+    instance: str | None = None  # 端末の世代（未指定=v2以前。hostを世代IDに流用する）
 
 
 @router.post(
@@ -163,7 +164,9 @@ async def receive_claude_session(
     if not adapter:
         raise HTTPException(500, "claude adapter not registered")
 
-    await adapter.store_webhook_data(body.date, body.minutes, body.host, body.version)
+    await adapter.store_webhook_data(
+        body.date, body.minutes, body.host, body.version, body.instance
+    )
     await adapter.aggregate()
 
     return {

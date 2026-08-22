@@ -42,14 +42,24 @@ async def _add_claude_host(
     *,
     step: int = 1,
     version: str | None = CLAUDE_CLIENT_VERSION,
+    instance: str | None = None,
 ):
-    """claude_session_minutes に、last から step日おきに遡って count 件入れる。"""
+    """claude_session_minutes に、last から step日おきに遡って count 件入れる。
+
+    instance 未指定は host と同じ世代ID（v2以前のクライアントと同じ扱い）。
+    """
     async with database.get_db_context() as db:
         for i in range(count):
             await db.execute(
-                """INSERT INTO claude_session_minutes (date, host, minutes, client_version)
-                VALUES (?, ?, 60, ?)""",
-                ((last - timedelta(days=i * step)).isoformat(), host, version),
+                """INSERT INTO claude_session_minutes
+                (date, host, instance_id, minutes, client_version)
+                VALUES (?, ?, ?, 60, ?)""",
+                (
+                    (last - timedelta(days=i * step)).isoformat(),
+                    host,
+                    instance or host,
+                    version,
+                ),
             )
         await db.commit()
 
@@ -292,6 +302,49 @@ async def test_claude_host_current_version_is_quiet(test_db):
 
     report = await build_report(today=VOL_TODAY, token_checker=_no_token)
     assert not [r for r in report if r["id"].startswith("claude:")]
+
+
+async def test_claude_host_superseded_generation_not_flagged(test_db):
+    """組み直して世代が変わった端末の旧世代は鳴らさない（migration 049）。
+
+    以前は host を改名して逃がすしかなく、旧hostが「引退」か「フックの故障」か
+    区別できないまま120日間 毎週警告が出続けていた（2026-08-16のMac再構築）。
+    """
+    await add_source("claude", "coding", classification="event")
+    await add_record(VOL_TODAY.isoformat(), "claude", "coding", 100)
+    # 旧世代: 6日前で止まっている。単体なら「レポータ v1」で鳴る条件
+    await _add_claude_host(
+        "mac", VOL_TODAY - timedelta(days=6), 20, step=3, version=None, instance="gen1"
+    )
+    # 新世代: 同じ端末名で送信継続中
+    await _add_claude_host("mac", VOL_TODAY, 6, step=1, instance="gen2")
+
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    assert not [r for r in report if r["id"].startswith("claude:")]
+
+
+async def test_claude_host_generation_switch_day(test_db):
+    """交代当日は両世代の最終送信日が並ぶ。後から使い始めた方を現役とみなす。"""
+    await add_source("claude", "coding", classification="event")
+    await add_record(VOL_TODAY.isoformat(), "claude", "coding", 100)
+    await _add_claude_host("mac", VOL_TODAY, 20, step=3, version=None, instance="gen1")
+    await _add_claude_host("mac", VOL_TODAY, 6, step=1, instance="gen2")
+
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    # gen1 を現役と誤認すると「レポータ v1」で鳴ってしまう
+    assert not [r for r in report if r["id"].startswith("claude:")]
+
+
+async def test_claude_host_without_successor_still_warns(test_db):
+    """後継世代が無いまま黙った端末は従来どおり鳴る（世代分離で穴を開けない）。"""
+    await add_source("claude", "coding", classification="event")
+    await add_record(VOL_TODAY.isoformat(), "claude", "coding", 100)
+    await _add_claude_host("nas", VOL_TODAY - timedelta(days=30), 20, step=1, instance="gen1")
+
+    report = await build_report(today=VOL_TODAY, token_checker=_no_token)
+    row = next(r for r in report if r["id"] == "claude:nas")
+    assert row["level"] == "warn"
+    assert "送信なし" in row["detail"]
 
 
 async def test_always_quiet_source_not_flagged(test_db):
