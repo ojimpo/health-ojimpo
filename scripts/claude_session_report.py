@@ -8,7 +8,7 @@ Windows=直書き / Mac=1Password と3方言に分岐して、両方サイレン
 設定: ~/.config/health-ojimpo/report.env （0600, KEY=VALUE, 値はクォート可）
   HEALTH_WEBHOOK_URL     送信先。既定 https://health.ojimpo.com/api/ingest/webhook/claude_session
   HEALTH_WEBHOOK_SECRET  Bearer トークン（サーバの WEBHOOK_SECRET と同じ値）
-  HEALTH_HOST_NAME       端末識別子。**端末を組み直したら必ず変える**（後述）
+  HEALTH_HOST_NAME       端末の名前。**組み直しても変えない**（世代は後述のinstance_idで分ける）
   CLAUDE_PROJECTS_DIR    任意。既定 ~/.claude/projects
 同名の環境変数があればそちらが優先される。設定ファイルはbashではなくこのスクリプトが
 自前で読む（`source` させると値のクォート漏れでフックごと死ぬため）。
@@ -17,6 +17,9 @@ Windows=直書き / Mac=1Password と3方言に分岐して、両方サイレン
   "command": "nohup python3 ~/.local/bin/claude_session_report.py >/dev/null 2>&1 &"
 
 挙動:
+- 端末の世代を instance_id（~/.local/state/health-ojimpo/instance_id）で申告する。
+  端末を組み直すと state ごと消えて新しい世代になるので、名前を変える必要がない。
+  サーバは「同じ名前に新しい世代が現れた」= 引退 と判断して旧世代を鳴らさない
 - 直近48hに更新されたJSONLから日次の作業分数を推定（5分以上の間隔は離席とみなす）
 - 見つかった全日付を送る。サーバはMAX更新なので再送は安全、日付をまたいでも欠けない
 - 前回送信から5分未満なら送らない（Stopフックは応答のたびに発火するため）
@@ -38,13 +41,14 @@ import os
 import pathlib
 import socket
 import sys
+import uuid
 import time
 import urllib.error
 import urllib.request
 from collections import defaultdict
 from datetime import datetime, timezone
 
-VERSION = "2"
+VERSION = "3"
 
 DEFAULT_URL = "https://health.ojimpo.com/api/ingest/webhook/claude_session"
 CONFIG_PATH = pathlib.Path(
@@ -53,6 +57,7 @@ CONFIG_PATH = pathlib.Path(
 )
 STATE_DIR = pathlib.Path.home() / ".local" / "state" / "health-ojimpo"
 STATE_FILE = STATE_DIR / "state.json"
+INSTANCE_FILE = STATE_DIR / "instance_id"
 LOG_FILE = STATE_DIR / "report.log"
 
 IDLE_THRESHOLD_SECONDS = 5 * 60
@@ -120,6 +125,32 @@ def write_state(state: dict) -> None:
         pass
 
 
+def resolve_instance_id(host: str) -> str:
+    """この端末の世代IDを返す（無ければ作って永続化する）。
+
+    端末を消して組み直すと state ごと消えるので、次回起動時に別のIDになる。
+    これがサーバ側の「世代交代」の唯一の根拠なので、**同じ端末では絶対に
+    変わってはいけない**。書き込めない環境では毎回新しいIDが生えて世代が
+    無限に増えてしまうため、その場合は host 名にフォールバックする
+    （v2以前と同じ挙動＝世代を分けないが、二重計上もしない）。
+    """
+    try:
+        current = INSTANCE_FILE.read_text(encoding="utf-8").strip()
+        if current:
+            return current
+    except OSError:
+        pass
+    generated = uuid.uuid4().hex[:12]
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        INSTANCE_FILE.write_text(generated + "\n", encoding="utf-8")
+    except OSError:
+        log(f"instance_id を保存できません（{INSTANCE_FILE}）。host名を世代IDに使います")
+        return host
+    log(f"instance_id を新規発行しました: {generated}")
+    return generated
+
+
 # --- 集計 -----------------------------------------------------------------
 
 def iter_timestamps(claude_dir: pathlib.Path, all_history: bool = False):
@@ -178,12 +209,15 @@ def compute_daily_minutes(
 
 # --- 送信 -----------------------------------------------------------------
 
-def post_minutes(url: str, secret: str, date_str: str, minutes: float, host: str) -> bool:
+def post_minutes(
+    url: str, secret: str, date_str: str, minutes: float, host: str, instance: str
+) -> bool:
     payload = json.dumps({
         "date": date_str,
         "minutes": round(minutes, 1),
         "host": host,
         "version": VERSION,
+        "instance": instance,
     }).encode()
     headers = {
         "Content-Type": "application/json",
@@ -220,7 +254,10 @@ def show_status(conf: dict[str, str]) -> None:
     print(f"config  : {CONFIG_PATH} ({'あり' if CONFIG_PATH.exists() else 'なし'})")
     print(f"url     : {resolve(conf, 'HEALTH_WEBHOOK_URL', DEFAULT_URL)}")
     print(f"secret  : {'設定済み (%d文字)' % len(secret) if secret else '未設定'}")
-    print(f"host    : {resolve(conf, 'HEALTH_HOST_NAME') or socket.gethostname()}")
+    host = resolve(conf, "HEALTH_HOST_NAME") or socket.gethostname()
+    print(f"host    : {host}")
+    instance = INSTANCE_FILE.read_text(encoding="utf-8").strip() if INSTANCE_FILE.exists() else "未発行"
+    print(f"instance: {instance}")
     print(f"最終送信: {last_str}")
     if LOG_FILE.exists():
         print(f"\n--- {LOG_FILE} (末尾10行) ---")
@@ -245,6 +282,7 @@ def main(argv: list[str]) -> int:
     url = resolve(conf, "HEALTH_WEBHOOK_URL", DEFAULT_URL)
     secret = resolve(conf, "HEALTH_WEBHOOK_SECRET")
     host = resolve(conf, "HEALTH_HOST_NAME") or socket.gethostname()
+    instance = resolve_instance_id(host)
     claude_dir = pathlib.Path(
         resolve(conf, "CLAUDE_PROJECTS_DIR", str(pathlib.Path.home() / ".claude" / "projects"))
     )
@@ -267,17 +305,23 @@ def main(argv: list[str]) -> int:
 
     if dry_run:
         for d in sorted(daily):
-            print(f"{d} {daily[d]:8.1f} min  host={host}")
+            print(f"{d} {daily[d]:8.1f} min  host={host} instance={instance}")
         print(f"\n(dry-run: {url} には送信していません)")
         return 0
 
-    sent = [d for d in sorted(daily) if post_minutes(url, secret, d, daily[d], host)]
+    sent = [
+        d for d in sorted(daily)
+        if post_minutes(url, secret, d, daily[d], host, instance)
+    ]
     if sent:
         state["last_sent_at"] = time.time()
         state["last_sent_dates"] = sent
         write_state(state)
         # 成功も残す。無言だと「止まっている」ことに気付けない
-        log(f"sent {len(sent)}/{len(daily)} dates host={host} latest={sent[-1]}")
+        log(
+            f"sent {len(sent)}/{len(daily)} dates host={host} "
+            f"instance={instance} latest={sent[-1]}"
+        )
     return 0
 
 
