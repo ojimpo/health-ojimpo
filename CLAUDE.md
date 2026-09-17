@@ -71,6 +71,17 @@
 - **文化的指標**: display_type=activity/card_only カテゴリの平均 → RICH/MODERATE/LOW
 - 総合スコアを1つにまとめない。2軸で独立して表示
 
+## 取り込みパイプライン（ingest）
+
+- **差分取得の起点は `ingest_log.last_timestamp`**。`run_ingest_pipeline()` が実行ごとに1行作り、完了時に書き戻す
+- **書き戻す値はアダプタが `self.last_ingested_timestamp` に報告する**（`sources/base.py`）。報告が無ければ前回値を引き継ぐ。**パイプライン側で `get_last_timestamp()` を呼んで書き戻してはいけない**。それは「1つ前の completed 行の値」なので、読んだ値をそのまま書き戻すだけになり last_timestamp が永久に進まない
+  - 2026-03-09（初期のパイプライン導入）から 2026-09-17 までこれで動いていた。lastfm は 2026-03-09 14:42 UTC の値を **4,011回** 書き続け、**毎時 15,722件（約79ページ、1日約1,900リクエスト）を取り直していた**。`INSERT OR IGNORE` なのでデータは無傷だが取得量は日々増え続ける
+  - **他のソースは last_timestamp が NULL のままで、差分取得そのものが効いていなかった**（github / anthropic_usage / openai_usage は毎回90日窓、strava は毎回30日窓を取り直していた）。壊れ方が静かで、ログにもスコアにも出ない
+  - 気付いたきっかけは Last.fm MCP の調査で `ingest_log` を眺めたこと。**この種の不具合は ingest_log を時系列で見ないと見えない**
+- **取りこぼした回は進めない**。`services/lastfm.py` の `fetch_all_tracks` はページ単位の失敗を握り潰して続行するので `(tracks, failed_pages)` を返し、**1ページでも落ちていれば報告しない**。進めると次回はその先から取りに行き、落ちたページの scrobble が二度と入らない。日次バケツのソース（github / usage系）も、保存に失敗した日があれば同じ理由で報告しない
+- **`ingest_log.records_stored` は新規行数ではない**。`INSERT OR IGNORE` で弾かれた分も加算される実装なので、「何件増えたか」の指標には使えない
+- 回帰テストは `backend/tests/test_ingest_pipeline.py`
+
 ## グラフ表示
 
 - 3モードタブ: ACTIVITY / SCORE / CONDITION
