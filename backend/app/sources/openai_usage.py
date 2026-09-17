@@ -34,6 +34,7 @@ class OpenAIUsageAdapter(SourceAdapter):
 
         stored = 0
         last_ts = 0
+        failed = 0
         async with get_db_context() as db:
             for bucket in buckets:
                 try:
@@ -56,8 +57,14 @@ class OpenAIUsageAdapter(SourceAdapter):
                     )
                     last_ts = max(last_ts, bucket_ts)
                 except Exception:
+                    failed += 1
                     logger.exception("Error storing OpenAI usage for %s", bucket["date"])
             await db.commit()
+
+        # 取りこぼした日があるときは進めない。進めると次回の起点がその先になり、
+        # 落ちた日が二度と取り直されない。
+        if last_ts and not failed:
+            self.last_ingested_timestamp = last_ts
 
         logger.info("Stored %d OpenAI usage records", stored)
         return len(buckets), stored

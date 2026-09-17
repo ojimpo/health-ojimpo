@@ -56,11 +56,16 @@ async def fetch_recent_tracks(
 
 async def fetch_all_tracks(
     from_ts: int | None = None,
-) -> list[dict]:
-    """Fetch all tracks from Last.fm, paginating through all pages."""
+) -> tuple[list[dict], int]:
+    """Fetch all tracks from Last.fm, paginating through all pages.
+
+    Returns (tracks, failed_pages). ページ単位の失敗は握り潰して続行するので、
+    呼び出し側が「全ページ取れたか」を判断できるように件数を返す。
+    """
     user = settings.lastfm_user
     api_key = settings.lastfm_api_key
     all_tracks = []
+    failed_pages = 0
     page = 1
 
     first_page = await fetch_recent_tracks(user, api_key, from_ts=from_ts, page=1)
@@ -87,11 +92,12 @@ async def fetch_all_tracks(
                     len(all_tracks),
                 )
         except Exception:
+            failed_pages += 1
             logger.exception("Error fetching page %d", page)
             await asyncio.sleep(5)  # Back off on error
             continue
 
-    return all_tracks
+    return all_tracks, failed_pages
 
 
 def _filter_tracks(tracks: list[dict]) -> list[dict]:

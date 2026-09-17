@@ -38,6 +38,12 @@ class SourceAdapter(ABC):
     source_id: str
     display_name: str
 
+    #: 直近の fetch_and_store が取り込んだ最新タイムスタンプ（UNIX秒）。
+    #: ingest パイプラインがこれを ingest_log.last_timestamp へ書き戻し、
+    #: 次回の差分取得の起点になる。報告しないアダプタ（None のまま）は
+    #: 前回値がそのまま引き継がれる。
+    last_ingested_timestamp: int | None = None
+
     @abstractmethod
     async def is_configured(self) -> bool:
         """Check if this source has valid credentials/config."""

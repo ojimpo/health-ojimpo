@@ -29,11 +29,17 @@ async def run_ingest_pipeline(source_id: str = "lastfm", from_date: str | None =
         await db.commit()
 
     try:
+        # 前回の報告値が残っていると誤って進めてしまうので、毎回クリアしてから走らせる
+        adapter.last_ingested_timestamp = None
+
         fetched, stored = await adapter.fetch_and_store(from_date)
         await adapter.aggregate()
 
-        # Get last timestamp for ingest log
-        last_ts = await adapter.get_last_timestamp()
+        # 次回の差分取得の起点。アダプタが今回の最新タイムスタンプを報告した
+        # ときだけ進め、報告が無ければ前回値を引き継ぐ。
+        # ここで get_last_timestamp() を呼ぶと「1つ前の completed 行の値」を
+        # 読んで同じ値を書き戻すだけになり、last_timestamp が永久に進まない。
+        last_ts = adapter.last_ingested_timestamp or await adapter.get_last_timestamp()
 
         async with get_db_context() as db:
             await db.execute(

@@ -26,7 +26,7 @@ class LastfmAdapter(SourceAdapter):
             if last_ts:
                 from_ts = last_ts + 1
 
-        tracks = await fetch_all_tracks(from_ts=from_ts)
+        tracks, failed_pages = await fetch_all_tracks(from_ts=from_ts)
         logger.info("Fetched %d tracks from Last.fm", len(tracks))
 
         stored = 0
@@ -55,6 +55,16 @@ class LastfmAdapter(SourceAdapter):
                 except Exception:
                     logger.exception("Error storing scrobble: %s", parsed["track_name"])
             await db.commit()
+
+        # 取りこぼしたページがあるときは進めない。進めると次回はその先から
+        # 取りに行くので、落ちたページの scrobble が二度と入らない。
+        if failed_pages:
+            logger.warning(
+                "Last.fm: %d page(s) failed, keeping the previous last_timestamp",
+                failed_pages,
+            )
+        elif last_ts:
+            self.last_ingested_timestamp = last_ts
 
         logger.info("Stored %d new scrobbles", stored)
         return len(tracks), stored
