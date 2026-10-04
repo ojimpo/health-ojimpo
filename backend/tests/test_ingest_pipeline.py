@@ -104,39 +104,4 @@ async def test_stale_report_is_cleared_before_fetch(test_db, monkeypatch):
     assert last_ts is None
 
 
-def _track(uts: int) -> dict:
-    return {
-        "name": "Cherry",
-        "artist": {"#text": "スピッツ"},
-        "album": {"#text": "空の飛び方"},
-        "date": {"uts": str(uts)},
-    }
-
-
-async def test_lastfm_reports_newest_scrobble(test_db, monkeypatch):
-    from app.sources import lastfm as lastfm_source
-
-    async def fake_fetch(from_ts=None):
-        return [_track(1_700_000_000), _track(1_700_003_600)], 0
-
-    monkeypatch.setattr(lastfm_source, "fetch_all_tracks", fake_fetch)
-
-    adapter = lastfm_source.LastfmAdapter()
-    await adapter.fetch_and_store()
-
-    assert adapter.last_ingested_timestamp == 1_700_003_600
-
-
-async def test_lastfm_holds_timestamp_when_a_page_failed(test_db, monkeypatch):
-    """ページを取りこぼした回は進めない。進めるとその scrobble が二度と入らない。"""
-    from app.sources import lastfm as lastfm_source
-
-    async def fake_fetch(from_ts=None):
-        return [_track(1_700_000_000), _track(1_700_003_600)], 1
-
-    monkeypatch.setattr(lastfm_source, "fetch_all_tracks", fake_fetch)
-
-    adapter = lastfm_source.LastfmAdapter()
-    await adapter.fetch_and_store()
-
-    assert adapter.last_ingested_timestamp is None
+# Last.fm アダプタ固有のテストは test_lastfm_gateway.py（2026-10-05 に scrobble-gateway へ切り替え）

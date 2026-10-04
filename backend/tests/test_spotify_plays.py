@@ -59,13 +59,10 @@ async def _add_plays(day: str, count: int):
 
 async def _add_scrobbles(day: str, count: int):
     async with get_db_context() as db:
-        for i in range(count):
-            await db.execute(
-                """INSERT INTO lastfm_scrobbles
-                (track_name, artist_name, scrobbled_at, scrobbled_date, duration_seconds)
-                VALUES (?, 'a', ?, ?, 240)""",
-                (f"s_{day}_{i}", 1700000000 + i, day),
-            )
+        await db.execute(
+            "INSERT OR REPLACE INTO lastfm_daily_plays (date, plays) VALUES (?, ?)",
+            (day, count),
+        )
         await db.commit()
 
 

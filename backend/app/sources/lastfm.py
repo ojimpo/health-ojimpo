@@ -1,12 +1,19 @@
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+
+import httpx
 
 from ..config import settings
 from ..database import get_db_context
-from ..services.lastfm import fetch_all_tracks, parse_scrobble
 from .base import SourceAdapter, format_relative_day
 
 logger = logging.getLogger(__name__)
+
+# Last.fm の取り込みは scrobble-gateway に一本化した（2026-10-05）。
+# ここは Last.fm API を叩かず、scrobble-gateway の内部 REST から日ごとの再生件数
+# （UTC）だけを受け取って lastfm_daily_plays に入れる。scrobble の完全な履歴は
+# 持たない。旧実装（services/lastfm.py と lastfm_scrobbles）はロールバック期間が
+# 終わるまで残してある。
 
 
 class LastfmAdapter(SourceAdapter):
@@ -14,79 +21,60 @@ class LastfmAdapter(SourceAdapter):
     display_name = "Last.fm"
 
     async def is_configured(self) -> bool:
-        return bool(settings.lastfm_api_key and settings.lastfm_user)
+        return bool(settings.scrobble_gateway_url)
 
     async def fetch_and_store(self, from_date: str | None = None) -> tuple[int, int]:
-        from_ts = None
-        prev_ts = None
-        if from_date:
-            dt = datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            from_ts = int(dt.timestamp())
-        else:
-            last_ts = prev_ts = await self.get_last_timestamp()
-            if last_ts:
-                # 起点ちょうどからだと、遅れて届いた古い時刻の scrobble を
-                # 飛び越えて二度と取らない（2026-09-18〜10-04 に 12 件発生）
-                from_ts = last_ts + 1 - settings.lastfm_lookback_hours * 3600
+        today = datetime.now(timezone.utc).date()
+        if from_date is None:
+            from_date = (today - timedelta(days=settings.lastfm_daily_lookback_days)).isoformat()
 
-        tracks, failed_pages = await fetch_all_tracks(from_ts=from_ts)
-        logger.info("Fetched %d tracks from Last.fm", len(tracks))
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                f"{settings.scrobble_gateway_url.rstrip('/')}/daily-plays",
+                params={"from": from_date, "to": today.isoformat()},
+            )
+            resp.raise_for_status()
+            body = resp.json()
 
-        stored = 0
-        last_ts = 0
+        if not body.get("fullHistorySynced"):
+            # 初回の全件取得が終わる前の値で上書きすると、過去の日が欠けて見える
+            raise RuntimeError("scrobble-gateway has not finished its full history sync yet")
+
+        days = {d["date"]: int(d["plays"]) for d in body.get("days", [])}
         async with get_db_context() as db:
-            for track in tracks:
-                parsed = parse_scrobble(track)
-                if not parsed:
-                    continue
-                try:
-                    await db.execute(
-                        """INSERT OR IGNORE INTO lastfm_scrobbles
-                        (track_name, artist_name, album_name, scrobbled_at, scrobbled_date, duration_seconds)
-                        VALUES (?, ?, ?, ?, ?, ?)""",
-                        (
-                            parsed["track_name"],
-                            parsed["artist_name"],
-                            parsed["album_name"],
-                            parsed["scrobbled_at"],
-                            parsed["scrobbled_date"],
-                            parsed["duration_seconds"],
-                        ),
-                    )
-                    stored += 1
-                    last_ts = max(last_ts, parsed["scrobbled_at"])
-                except Exception:
-                    logger.exception("Error storing scrobble: %s", parsed["track_name"])
+            # 窓の中は丸ごと置き換える。gateway が返さない日は「0件」なので、
+            # 残しておくと消えた scrobble の分が数え続けられる
+            await db.execute(
+                "DELETE FROM lastfm_daily_plays WHERE date >= ? AND date <= ?",
+                (from_date, today.isoformat()),
+            )
+            await db.executemany(
+                "INSERT INTO lastfm_daily_plays (date, plays) VALUES (?, ?)",
+                list(days.items()),
+            )
             await db.commit()
 
-        # 取りこぼしたページがあるときは進めない。進めると次回はその先から
-        # 取りに行くので、落ちたページの scrobble が二度と入らない。
-        if failed_pages:
-            logger.warning(
-                "Last.fm: %d page(s) failed, keeping the previous last_timestamp",
-                failed_pages,
+        newest = body.get("newestScrobbleAt")
+        if newest:
+            self.last_ingested_timestamp = int(
+                datetime.fromisoformat(newest.replace("Z", "+00:00")).timestamp()
             )
-        elif last_ts:
-            # 遡って取り直した回に起点が巻き戻らないよう、前回値を下回らせない
-            self.last_ingested_timestamp = max(last_ts, prev_ts or 0)
-
-        logger.info("Stored %d new scrobbles", stored)
-        return len(tracks), stored
+        logger.info("Last.fm: stored %d daily counts from scrobble-gateway (%s..)", len(days), from_date)
+        return len(days), len(days)
 
     async def aggregate(self) -> None:
         async with get_db_context() as db:
             await db.execute(
                 """INSERT OR REPLACE INTO activity_records (date, source, category, minutes, raw_value, raw_unit, metadata)
                 SELECT
-                    scrobbled_date,
+                    date,
                     'lastfm',
                     'music',
-                    ROUND(SUM(COALESCE(duration_seconds, ?)) / 60.0, 1),
-                    ROUND(SUM(COALESCE(duration_seconds, ?)) / 60.0, 1),
+                    ROUND(plays * ? / 60.0, 1),
+                    ROUND(plays * ? / 60.0, 1),
                     'minutes',
                     NULL
-                FROM lastfm_scrobbles
-                GROUP BY scrobbled_date""",
+                FROM lastfm_daily_plays""",
                 (settings.default_track_duration_seconds, settings.default_track_duration_seconds),
             )
             await db.commit()
@@ -97,10 +85,9 @@ class LastfmAdapter(SourceAdapter):
     ) -> list[dict]:
         async with get_db_context() as db:
             rows = await db.execute_fetchall(
-                """SELECT scrobbled_date, COUNT(*) as tracks, SUM(duration_seconds) as total_secs
-                FROM lastfm_scrobbles
-                GROUP BY scrobbled_date
-                ORDER BY scrobbled_date DESC
+                """SELECT date, plays FROM lastfm_daily_plays
+                WHERE plays > 0
+                ORDER BY date DESC
                 LIMIT ?""",
                 (limit,),
             )
@@ -112,7 +99,7 @@ class LastfmAdapter(SourceAdapter):
                 time_str = format_relative_day(d, today)
 
                 tracks = row[1]
-                total_min = round(row[2] / 60) if row[2] else 0
+                total_min = round(tracks * settings.default_track_duration_seconds / 60)
                 hours = total_min // 60
                 mins = total_min % 60
                 if hours > 0:

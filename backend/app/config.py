@@ -9,7 +9,15 @@ class Settings(BaseSettings):
     # 差分取得のたびに last_timestamp からこの時間だけ遡って取り直す。
     # Spotify 経由の scrobble は遅れて・順不同で届くので、起点ちょうどから
     # 取ると後着分を飛び越える（INSERT OR IGNORE なので取り直しは無害）
+    # ※ 2026-10-05 に scrobble-gateway へ切り替えたので、上の3つは今は使っていない
+    #   （ロールバック用に残している）
     lastfm_lookback_hours: int = 72
+
+    # scrobble-gateway（Last.fm の唯一の窓口）。Docker ネットワーク内の内部 REST
+    scrobble_gateway_url: str = ""
+    # 毎回この日数ぶんの日次件数を取り直す。scrobble は後から届くので、
+    # 確定済みに見える数日前の件数も後で増えることがある
+    lastfm_daily_lookback_days: int = 7
 
     # Site identity
     app_username: str = "user"

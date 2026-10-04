@@ -120,10 +120,11 @@ async def _daily_counts(days: list[str]) -> list[dict]:
             sp = await db.execute_fetchall(
                 "SELECT COUNT(*) FROM spotify_play_history WHERE play_date = ?", (day,)
             )
+            # 2026-10-05 から Last.fm の件数は scrobble-gateway の日次件数を読む
             lf = await db.execute_fetchall(
-                "SELECT COUNT(*) FROM lastfm_scrobbles WHERE scrobbled_date = ?", (day,)
+                "SELECT plays FROM lastfm_daily_plays WHERE date = ?", (day,)
             )
-            out.append({"date": day, "spotify": sp[0][0], "lastfm": lf[0][0]})
+            out.append({"date": day, "spotify": sp[0][0], "lastfm": lf[0][0] if lf else 0})
     return out
 
 
