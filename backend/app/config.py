@@ -6,6 +6,10 @@ class Settings(BaseSettings):
     lastfm_api_key: str = ""
     lastfm_user: str = ""
     default_track_duration_seconds: int = 210  # 3.5 minutes
+    # 差分取得のたびに last_timestamp からこの時間だけ遡って取り直す。
+    # Spotify 経由の scrobble は遅れて・順不同で届くので、起点ちょうどから
+    # 取ると後着分を飛び越える（INSERT OR IGNORE なので取り直しは無害）
+    lastfm_lookback_hours: int = 72
 
     # Site identity
     app_username: str = "user"

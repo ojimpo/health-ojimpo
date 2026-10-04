@@ -18,13 +18,16 @@ class LastfmAdapter(SourceAdapter):
 
     async def fetch_and_store(self, from_date: str | None = None) -> tuple[int, int]:
         from_ts = None
+        prev_ts = None
         if from_date:
             dt = datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
             from_ts = int(dt.timestamp())
         else:
-            last_ts = await self.get_last_timestamp()
+            last_ts = prev_ts = await self.get_last_timestamp()
             if last_ts:
-                from_ts = last_ts + 1
+                # 起点ちょうどからだと、遅れて届いた古い時刻の scrobble を
+                # 飛び越えて二度と取らない（2026-09-18〜10-04 に 12 件発生）
+                from_ts = last_ts + 1 - settings.lastfm_lookback_hours * 3600
 
         tracks, failed_pages = await fetch_all_tracks(from_ts=from_ts)
         logger.info("Fetched %d tracks from Last.fm", len(tracks))
@@ -64,7 +67,8 @@ class LastfmAdapter(SourceAdapter):
                 failed_pages,
             )
         elif last_ts:
-            self.last_ingested_timestamp = last_ts
+            # 遡って取り直した回に起点が巻き戻らないよう、前回値を下回らせない
+            self.last_ingested_timestamp = max(last_ts, prev_ts or 0)
 
         logger.info("Stored %d new scrobbles", stored)
         return len(tracks), stored
