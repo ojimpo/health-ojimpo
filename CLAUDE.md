@@ -54,8 +54,8 @@
   - **除外は必ず見せる**: スコアカードに「⚪ 計測不能: 音楽」、週次レポートに「スコアから除外中」の節。黙って外すと「全部正常」に見え、それ自体がソース悪化の見逃しになる
   - 復帰は自動。自動判定はその障害が消えれば戻し、本人申告は取得量が平常に戻る（level='ok'）まで待つ
   - `HealthStatus` に UNKNOWN は足していない（通知・status_history・共有ビュー・フロント・health-mcpまで波及するため）。フラグで表現している
-- **Last.fmの停止はSpotify再生実績との突き合わせで翌日検知する**（migration 048、`services/spotify_plays.py`）: Spotify recently-played（直近50件）を毎時ingestで `spotify_play_history` に影データとして蓄積（スコアには一切参加しない。spotify_podcastのOAuthトークンを共用）。直近2日（UTC、当日除く）とも「Spotify再生≥10曲 かつ Last.fm scrobbleがその30%未満」なら、本人LINEに `ms:` postbackの2択（壊れてた=除外/問題ない）で確認する。**自動では除外しない**（除外証拠はtoken/ingest_failed/user_reportedの3つだけ、の原則を守る）。聞き直し抑制14日は `measurement_state.asked_at` を共用。既存の取得量急減チェック（検知まで約9日）より大幅に速い。Spotifyプライベートセッションの再生はrecently-playedに載らないので誤検知にならない
-- **2026-07停止期間（7/24〜8/16）の復元スクリプト**: Spotifyのデータエクスポート（privacy.spotify.com、zip対応・新旧フォーマット両対応）から `scripts/backfill_lastfm_from_spotify_export.py` で全期間を `lastfm_scrobbles` へ直接復元する（activity_recordsは次の毎時ingestで自動再集計）。dry-run既定・冪等・Pano/Plex経由の既存scrobbleと±10分重複除外。`scripts/scrobble_lastfm_from_spotify_export.py`（Last.fm本体への書き戻し）もあるが、**本人が2026-08-22に書き戻しは諦めると判断済み**（scrobble APIの約14日制限にエクスポートが間に合わないため。催促しないこと）。将来の同種事故では14日以内なら使える
+- **Last.fmの停止はSpotify再生実績との突き合わせで翌日検知する**（migration 048、`services/spotify_plays.py`）: Spotify recently-played（直近50件）を毎時ingestで `spotify_play_history` に影データとして蓄積（スコアには一切参加しない。spotify_podcastのOAuthトークンを共用）。直近2日（UTC、当日除く）とも「Spotify再生≥10曲 かつ Last.fm scrobble（2026-10-05 から `lastfm_daily_plays` の日次件数）がその30%未満」なら、本人LINEに `ms:` postbackの2択（壊れてた=除外/問題ない）で確認する。**自動では除外しない**（除外証拠はtoken/ingest_failed/user_reportedの3つだけ、の原則を守る）。聞き直し抑制14日は `measurement_state.asked_at` を共用。既存の取得量急減チェック（検知まで約9日）より大幅に速い。Spotifyプライベートセッションの再生はrecently-playedに載らないので誤検知にならない
+- **2026-07停止期間（7/24〜8/16）の復元スクリプト**（**2026-10-05 の scrobble-gateway 切り替えで `lastfm_scrobbles` は凍結したので、このスクリプトで復元してもダッシュボードには反映されない**。同種の事故は scrobble-gateway 側で扱う）: Spotifyのデータエクスポート（privacy.spotify.com、zip対応・新旧フォーマット両対応）から `scripts/backfill_lastfm_from_spotify_export.py` で全期間を `lastfm_scrobbles` へ直接復元する（activity_recordsは次の毎時ingestで自動再集計）。dry-run既定・冪等・Pano/Plex経由の既存scrobbleと±10分重複除外。`scripts/scrobble_lastfm_from_spotify_export.py`（Last.fm本体への書き戻し）もあるが、**本人が2026-08-22に書き戻しは諦めると判断済み**（scrobble APIの約14日制限にエクスポートが間に合わないため。催促しないこと）。将来の同種事故では14日以内なら使える
 - **間欠的な行動は `event` + 90日/half_life 30 に揃える**（gcal_private / gcal_live / bookmeter / filmarks / kashidashi_cd）。7日/half_life 7 は「ほぼ毎日やること」向けの設定で、2週間に1回の行動に当てると次にやる頃には前回分が28%まで減衰し、スコアが一桁に張り付いて情報量が無くなる。CD貸出は「通館時にまとめて4枚」という形なので `baseline`（ゼロが異常）ではなく `event`。baselineのままだと健康軸を常時約13点押し下げていた（migration 046。基準値も16枚/7日→48枚/90日=週1回の通館×4枚に遡及再較正。旧値2.29枚/日は最も集中していた2026-03〜05の1.63枚/日でも届かない過大設定だった）
 - **運動カテゴリは2ソース**: strava（意図的な運動）+ oura_steps（日常の歩数）。運動していなくても体が動いていれば健康スコアが落ちない誤検知対策（migration 038）
 - **活力カテゴリは2ソース**: nextdns_vitality（DNSクエリ数）+ stash_vitality。**stashは実再生時間ベース**（migration 044）。再生回数だと「30分観た日」と「5秒で閉じた日」が同じ1playになり、体感と乖離していた（例: 2026-08-13は1play=ほぼ最低点だが実再生22分）。Stashは1回の再生ごとの長さを持たず `Scene.play_duration` に累積秒数しかないので、ingestごとにシーン単位のスナップショット（`stash_scene_state`）と差分を取り、増えた秒数だけを同期間に増えた `play_history` の日付へ配分する（ingestは1時間毎なので日付の取り違えはほぼ起きない）。初回だけ差分が取れないため累積値を全履歴に等分して過去日を推定。基準値は180 min/週（2026-03〜08の週次中央値181分）。旧基準70 plays/週は実測中央値39 playsの約1.8倍で、通常の週でも常時56点しか出ず活力が慢性的に低い主因だった
@@ -73,18 +73,28 @@
 
 ## 取り込みパイプライン（ingest）
 
+- **Last.fm は scrobble-gateway から日次件数だけを受け取る（2026-10-05 切り替え）。** Last.fm の API キーと scrobble の完全な履歴は `~/dev/scrobble-gateway` に一本化した（health-ojimpo を「叩かれる API」にしないという方針から、Last.fm のデータ基盤を独立させた）
+  - `sources/lastfm.py` は Last.fm API を叩かず、`SCROBBLE_GATEWAY_URL`（既定 `http://scrobble-gateway:3001`、Docker ネットワーク内の内部 REST、publish されていない）の `GET /daily-plays` から UTC の日ごとの件数を取り、`lastfm_daily_plays` に入れる（migration 050）
+  - 毎回直近 `LASTFM_DAILY_LOOKBACK_DAYS`（既定7）日を取り直し、**窓の中は丸ごと置き換える**（gateway が返さない日は0件）。scrobble は後から届くので数日前の件数も増えうる
+  - gateway の初回全件取得が終わる前（`fullHistorySynced=false`）は上書きせず失敗にする
+  - 日次の再生時間・ダッシュボード・Spotify との乖離検知は `lastfm_daily_plays` を読む。**`lastfm_scrobbles` は凍結**（ロールバック期間が終わるまで消さない）。`services/lastfm.py`・`LASTFM_API_KEY`・`LASTFM_LOOKBACK_HOURS` も今は使っていないがロールバック用に残している
+  - 全期間を取り直すときは `POST /api/ingest/trigger` に `{"source":"lastfm","from_date":"2021-01-01"}`。**`docker compose exec backend python -c "run_ingest_pipeline(...)"` は効かない**（アダプタはアプリ起動時に登録されるので、別プロセスからは `Unknown source`）
+  - 切り替え時の照合: 日次の再生時間 1,933日分のうち変わったのは4日だけ（旧テーブルにあった大文字小文字違いの重複5件のぶん、3.5〜7分減）。バックアップは `data/health.db.bak-20261005-gateway-cutover`
+  - テストは `backend/tests/test_lastfm_gateway.py`
+
 - **差分取得の起点は `ingest_log.last_timestamp`**。`run_ingest_pipeline()` が実行ごとに1行作り、完了時に書き戻す
 - **書き戻す値はアダプタが `self.last_ingested_timestamp` に報告する**（`sources/base.py`）。報告が無ければ前回値を引き継ぐ。**パイプライン側で `get_last_timestamp()` を呼んで書き戻してはいけない**。それは「1つ前の completed 行の値」なので、読んだ値をそのまま書き戻すだけになり last_timestamp が永久に進まない
   - 2026-03-09（初期のパイプライン導入）から 2026-09-17 までこれで動いていた。lastfm は 2026-03-09 14:42 UTC の値を **4,011回** 書き続け、**毎時 15,722件（約79ページ、1日約1,900リクエスト）を取り直していた**。`INSERT OR IGNORE` なのでデータは無傷だが取得量は日々増え続ける
   - **他のソースは last_timestamp が NULL のままで、差分取得そのものが効いていなかった**（github / anthropic_usage / openai_usage は毎回90日窓、strava は毎回30日窓を取り直していた）。壊れ方が静かで、ログにもスコアにも出ない
   - 気付いたきっかけは Last.fm MCP の調査で `ingest_log` を眺めたこと。**この種の不具合は ingest_log を時系列で見ないと見えない**
+- （以下3項目は 2026-10-05 までの旧 Last.fm アダプタの話。仕組み自体は他のソースにも効いている）
 - **取りこぼした回は進めない**。`services/lastfm.py` の `fetch_all_tracks` はページ単位の失敗を握り潰して続行するので `(tracks, failed_pages)` を返し、**1ページでも落ちていれば報告しない**。進めると次回はその先から取りに行き、落ちたページの scrobble が二度と入らない。日次バケツのソース（github / usage系）も、保存に失敗した日があれば同じ理由で報告しない
 - **`ingest_log.records_stored` は新規行数ではない**。`INSERT OR IGNORE` で弾かれた分も加算される実装なので、「何件増えたか」の指標には使えない
 - **Last.fm の差分取得は起点から `LASTFM_LOOKBACK_HOURS`（既定72）遡って取り直す**。Spotify 経由の scrobble は Last.fm に**遅れて・順不同で**届くので、`from=last_timestamp+1` ちょうどから取ると起点より古い時刻の後着分を飛び越えて二度と取らない
   - 2026-09-17 に上の last_timestamp を直した途端に表面化し、10-04 までに 12 件を取りこぼした（それまでは毎回 3/9 以降を取り直していたので隠れていた）。**差分取得を「正しく」した結果、別の前提崩れが見えた**例
   - 遡った回でも last_timestamp は前回値を下回らせない（`max(取得分の最大, 前回値)`）
   - 72時間より遅れて届く分は拾えない。全件の照合は Last.fm の `from`/`to` 窓の `total` と日別件数を突き合わせる（全ページ取得はページ境界で重複が返るので件数の検証に使えない）
-- 回帰テストは `backend/tests/test_ingest_pipeline.py` と `backend/tests/test_lastfm_lookback.py`
+- 回帰テストは `backend/tests/test_ingest_pipeline.py`（旧 Last.fm アダプタの `test_lastfm_lookback.py` は切り替えで削除。後着対策は scrobble-gateway 側にテスト付きで移った）
 
 ## グラフ表示
 
