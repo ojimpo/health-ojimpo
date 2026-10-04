@@ -80,7 +80,11 @@
   - 気付いたきっかけは Last.fm MCP の調査で `ingest_log` を眺めたこと。**この種の不具合は ingest_log を時系列で見ないと見えない**
 - **取りこぼした回は進めない**。`services/lastfm.py` の `fetch_all_tracks` はページ単位の失敗を握り潰して続行するので `(tracks, failed_pages)` を返し、**1ページでも落ちていれば報告しない**。進めると次回はその先から取りに行き、落ちたページの scrobble が二度と入らない。日次バケツのソース（github / usage系）も、保存に失敗した日があれば同じ理由で報告しない
 - **`ingest_log.records_stored` は新規行数ではない**。`INSERT OR IGNORE` で弾かれた分も加算される実装なので、「何件増えたか」の指標には使えない
-- 回帰テストは `backend/tests/test_ingest_pipeline.py`
+- **Last.fm の差分取得は起点から `LASTFM_LOOKBACK_HOURS`（既定72）遡って取り直す**。Spotify 経由の scrobble は Last.fm に**遅れて・順不同で**届くので、`from=last_timestamp+1` ちょうどから取ると起点より古い時刻の後着分を飛び越えて二度と取らない
+  - 2026-09-17 に上の last_timestamp を直した途端に表面化し、10-04 までに 12 件を取りこぼした（それまでは毎回 3/9 以降を取り直していたので隠れていた）。**差分取得を「正しく」した結果、別の前提崩れが見えた**例
+  - 遡った回でも last_timestamp は前回値を下回らせない（`max(取得分の最大, 前回値)`）
+  - 72時間より遅れて届く分は拾えない。全件の照合は Last.fm の `from`/`to` 窓の `total` と日別件数を突き合わせる（全ページ取得はページ境界で重複が返るので件数の検証に使えない）
+- 回帰テストは `backend/tests/test_ingest_pipeline.py` と `backend/tests/test_lastfm_lookback.py`
 
 ## グラフ表示
 
