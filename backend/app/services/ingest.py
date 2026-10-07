@@ -88,6 +88,13 @@ async def run_all_ingest():
     except Exception:
         logger.exception("Spotify play history check failed")
 
+    # 再認証などで直ったソースを、週次レポートを待たずに計測状態へ戻す
+    try:
+        from .source_health import recheck_broken_sources
+        await recheck_broken_sources()
+    except Exception:
+        logger.exception("Broken source recheck failed")
+
     # Check for status transitions and send notifications
     try:
         from .notification import check_and_notify

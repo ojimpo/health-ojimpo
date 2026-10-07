@@ -383,6 +383,29 @@ async def sync_measurement_state(report: list[dict]) -> dict[str, list[str]]:
     return {"marked": marked, "recovered": recovered}
 
 
+async def recheck_broken_sources(token_checker=_check_token) -> list[str]:
+    """broken の自動判定ソースだけを再判定し、直っていれば ok に戻す（毎時のingest後に呼ぶ）。
+
+    復帰の判定が週次レポートにしか無いと、再認証した直後でも次の日曜まで
+    「計測不能」が残る（2026-10-04 の spotify_podcast）。broken が無ければ何もしない
+    ので、トークンの実refreshを伴う build_report は壊れている間しか回らない。
+    新たに broken にはしない（それは週次の役目で、通知の連投も避けられる）。
+    本人申告の broken は取得量が平常に戻るまで続くので、ここでは触らない。
+    """
+    broken_now = await measurement_state.get_broken_sources()
+    targets = {
+        sid
+        for sid, v in broken_now.items()
+        if v["reason"] != measurement_state.REASON_USER_REPORTED
+    }
+    if not targets:
+        return []
+    report = [r for r in await build_report(token_checker=token_checker) if r["id"] in targets]
+    # 新規 broken は週次に任せ、直ったものだけ反映する
+    report = [r for r in report if r["level"] != "broken"]
+    return (await sync_measurement_state(report))["recovered"]
+
+
 def format_report(
     report: list[dict], today: date | None = None, broken: dict[str, dict] | None = None
 ) -> str:

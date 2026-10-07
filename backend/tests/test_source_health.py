@@ -7,6 +7,7 @@ from app.services.source_health import (
     CLAUDE_CLIENT_VERSION,
     build_report,
     format_report,
+    recheck_broken_sources,
     sync_measurement_state,
 )
 
@@ -404,6 +405,39 @@ async def test_auto_reason_recovers_when_failure_clears(test_db):
     report = await build_report(today=TODAY, token_checker=_valid_token)
     assert (await sync_measurement_state(report))["recovered"] == ["gcal_private"]
     assert await ms.get_broken_sources() == {}
+
+
+async def test_recheck_recovers_auto_broken_without_weekly_report(test_db):
+    """再認証した直後に、週次レポートを待たず毎時の再判定で戻る。"""
+    await add_source("spotify_podcast", "podcast", classification="event")
+    await add_record(TODAY.isoformat(), "spotify_podcast", "podcast", 1)
+    await ms.mark_broken("spotify_podcast", ms.REASON_TOKEN)
+
+    assert await recheck_broken_sources(token_checker=_valid_token) == ["spotify_podcast"]
+    assert await ms.get_broken_sources() == {}
+
+
+async def test_recheck_keeps_broken_while_failing_and_never_marks_new(test_db):
+    await add_source("gcal_private", "calendar", classification="event")
+    await add_source("steam", "game", classification="event")
+    await add_record(TODAY.isoformat(), "gcal_private", "calendar", 1)
+    await add_record(TODAY.isoformat(), "steam", "game", 1)
+    await _add_oauth_token("gcal_private")
+    await _add_ingest_log("steam", "failed", "boom")
+    await ms.mark_broken("gcal_private", ms.REASON_TOKEN)
+
+    assert await recheck_broken_sources(token_checker=_no_token) == []
+    broken = await ms.get_broken_sources()
+    assert "gcal_private" in broken      # まだ壊れている
+    assert "steam" not in broken         # 新規 broken は週次の役目
+
+
+async def test_recheck_leaves_user_reported_alone(test_db):
+    await add_source("lastfm", "music", classification="baseline", base_value=1200)
+    await add_record(TODAY.isoformat(), "lastfm", "music", 100)
+    await ms.mark_broken("lastfm", ms.REASON_USER_REPORTED)
+    assert await recheck_broken_sources(token_checker=_valid_token) == []
+    assert "lastfm" in await ms.get_broken_sources()
 
 
 async def test_user_reported_needs_full_recovery(test_db):
