@@ -159,7 +159,7 @@ export default function NotificationSubscribe() {
             MCP
           </div>
           <div className={styles.mcpInfo}>
-            Claudeのコネクタに追加すると、会話でこのダッシュボードのデータを参照できます
+            ClaudeやChatGPTのコネクタにこのURLを追加すると、会話でこのダッシュボードのデータを参照できます
           </div>
           <div className={styles.mcpUrlRow}>
             <code className={styles.mcpUrl}>{MCP_URL}</code>
