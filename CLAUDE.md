@@ -95,6 +95,9 @@
   - 2026-09-17 に上の last_timestamp を直した途端に表面化し、10-04 までに 12 件を取りこぼした（それまでは毎回 3/9 以降を取り直していたので隠れていた）。**差分取得を「正しく」した結果、別の前提崩れが見えた**例
   - 遡った回でも last_timestamp は前回値を下回らせない（`max(取得分の最大, 前回値)`）
   - 72時間より遅れて届く分は拾えない。全件の照合は Last.fm の `from`/`to` 窓の `total` と日別件数を突き合わせる（全ページ取得はページ境界で重複が返るので件数の検証に使えない）
+- **sync-gateway 経由のソース（filmarks / bookmeter / studyplus）は取り込みのたびに gateway の今の状態へ合わせる**（2026-10-19）。以前は `INSERT OR REPLACE` だけで、gateway が報告しなくなった日の行を消せなかった。Filmarks は初回取り込み（2026-03-11）で鑑賞日が取れない分に**映画の公開日**を `event_date` に入れていて（`activity_records` の最古が 1954-04-21 になっていた原因。映画カテゴリの履歴が全体にずれていた）、sync-gateway 側で `scripts/filmarks_repair_event_dates.py` により鑑賞日（レビュー投稿日）へ直したが、health.db に古い日付が残る状態だった
+  - 掃除するのは**全件取得のときだけ**（`ingest_log.last_timestamp` が無く `from` を付けない場合。今はこのアダプタは差分取得になっておらず毎回全件）。差分取得・gateway が0件を返した場合・`from_date` より前は消さない（障害で空が返っただけで全部消えるのを避ける）
+  - 日付なしのレコードは黙って捨てず警告ログを出す。テストは `backend/tests/test_sync_gateway.py`
 - 回帰テストは `backend/tests/test_ingest_pipeline.py`（旧 Last.fm アダプタの `test_lastfm_lookback.py` は切り替えで削除。後着対策は scrobble-gateway 側にテスト付きで移った）
 
 ## グラフ表示
