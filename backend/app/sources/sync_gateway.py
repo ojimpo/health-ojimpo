@@ -72,9 +72,11 @@ class SyncGatewayAdapter(SourceAdapter):
         # Group by event_date. Default: count records (1 book = 1, 1 movie = 1).
         # value_field mode: sum a numeric field (e.g. studyplus minutes per day).
         daily_values: dict[str, float] = {}
+        undated = 0
         for rec in records:
             event_date = rec.get("event_date")
             if not event_date:
+                undated += 1
                 continue
             d = event_date[:10]  # YYYY-MM-DD
             if from_date and d < from_date:
@@ -101,7 +103,30 @@ class SyncGatewayAdapter(SourceAdapter):
                     (d, self.source_id, self._category, v, v, self._raw_unit),
                 )
                 stored += 1
+
+            # INSERT OR REPLACE は「gateway が今は報告しない日」の行を消せない。gateway 側で
+            # event_date を直した(例: Filmarks の公開日→鑑賞日)とき、古い日付の行が
+            # 永久に残る。全件取得のときだけ、gateway の今の状態に合わせて掃除する。
+            # 差分取得(from 指定)では records が一部なので消してはいけない。
+            # 0件が返ったときも、障害で空が返っただけかもしれないので触らない。
+            if "from" not in params and records and daily_values:
+                keep = list(daily_values)
+                marks = ",".join("?" * len(keep))
+                sql = f"DELETE FROM activity_records WHERE source = ? AND date NOT IN ({marks})"
+                args: list = [self.source_id, *keep]
+                if from_date:
+                    sql += " AND date >= ?"
+                    args.append(from_date)
+                cur = await db.execute(sql, args)
+                if cur.rowcount:
+                    logger.warning(
+                        "%s: removed %d stale daily rows no longer reported by sync-gateway",
+                        self.source_id, cur.rowcount,
+                    )
             await db.commit()
+
+        if undated:
+            logger.warning("%s: skipped %d records without event_date", self.source_id, undated)
 
         logger.info(
             "%s: stored %d daily records from %d items",
