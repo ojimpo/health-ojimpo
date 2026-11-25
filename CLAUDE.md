@@ -78,9 +78,9 @@
   - `sources/lastfm.py` は Last.fm API を叩かず、`SCROBBLE_GATEWAY_URL`（既定 `http://scrobble-gateway:3001`、Docker ネットワーク内の内部 REST、publish されていない）の `GET /daily-plays` から UTC の日ごとの件数を取り、`lastfm_daily_plays` に入れる（migration 050）
   - 毎回直近 `LASTFM_DAILY_LOOKBACK_DAYS`（既定7）日を取り直し、**窓の中は丸ごと置き換える**（gateway が返さない日は0件）。scrobble は後から届くので数日前の件数も増えうる
   - gateway の初回全件取得が終わる前（`fullHistorySynced=false`）は上書きせず失敗にする
-  - 日次の再生時間・ダッシュボード・Spotify との乖離検知は `lastfm_daily_plays` を読む。**`lastfm_scrobbles` は凍結**（ロールバック期間が終わるまで消さない）。`services/lastfm.py`・`LASTFM_API_KEY`・`LASTFM_LOOKBACK_HOURS` も今は使っていないがロールバック用に残している
+  - 日次の再生時間・ダッシュボード・Spotify との乖離検知は `lastfm_daily_plays` を読む。旧資産（`lastfm_scrobbles`、`services/lastfm.py`、`LASTFM_API_KEY` / `LASTFM_USER` / `LASTFM_LOOKBACK_HOURS`）はロールバック期間終了後の 2026-11-25 に撤去した（テーブルは migration 051 で DROP）。`scripts/backfill_lastfm_from_spotify_export.py` は実害が無いため残してあるが、書き込み先テーブルはもう無い
   - 全期間を取り直すときは `POST /api/ingest/trigger` に `{"source":"lastfm","from_date":"2021-01-01"}`。**`docker compose exec backend python -c "run_ingest_pipeline(...)"` は効かない**（アダプタはアプリ起動時に登録されるので、別プロセスからは `Unknown source`）
-  - 切り替え時の照合: 日次の再生時間 1,933日分のうち変わったのは4日だけ（旧テーブルにあった大文字小文字違いの重複5件のぶん、3.5〜7分減）。バックアップは `data/health.db.bak-20261005-gateway-cutover`
+  - 切り替え時の照合: 日次の再生時間 1,933日分のうち変わったのは4日だけ（旧テーブルにあった大文字小文字違いの重複5件のぶん、3.5〜7分減）。バックアップ `data/health.db.bak-20261005-gateway-cutover` は 2026-11-25 の撤去時に削除済み
   - テストは `backend/tests/test_lastfm_gateway.py`
 
 - **差分取得の起点は `ingest_log.last_timestamp`**。`run_ingest_pipeline()` が実行ごとに1行作り、完了時に書き戻す

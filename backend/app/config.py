@@ -2,16 +2,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # Last.fm
-    lastfm_api_key: str = ""
-    lastfm_user: str = ""
+    # Last.fm は scrobble-gateway 経由の日次件数だけを使う（2026-10-05 切り替え、
+    # 旧資産は 2026-11-25 に撤去）。1曲あたりの再生時間の近似だけが残っている。
     default_track_duration_seconds: int = 210  # 3.5 minutes
-    # 差分取得のたびに last_timestamp からこの時間だけ遡って取り直す。
-    # Spotify 経由の scrobble は遅れて・順不同で届くので、起点ちょうどから
-    # 取ると後着分を飛び越える（INSERT OR IGNORE なので取り直しは無害）
-    # ※ 2026-10-05 に scrobble-gateway へ切り替えたので、上の3つは今は使っていない
-    #   （ロールバック用に残している）
-    lastfm_lookback_hours: int = 72
 
     # scrobble-gateway（Last.fm の唯一の窓口）。Docker ネットワーク内の内部 REST
     scrobble_gateway_url: str = ""

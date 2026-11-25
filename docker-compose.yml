@@ -11,8 +11,6 @@ services:
     environment:
       - APP_USERNAME=${APP_USERNAME:-user}
       - APP_DOMAIN=${APP_DOMAIN:-localhost:8401}
-      - LASTFM_API_KEY=${LASTFM_API_KEY}
-      - LASTFM_USER=${LASTFM_USER}
       # Last.fm は scrobble-gateway（~/dev/scrobble-gateway）から日次件数だけ受け取る。
       # 同じ health-ojimpo_default ネットワークに居て、内部 REST は publish されていない
       - SCROBBLE_GATEWAY_URL=${SCROBBLE_GATEWAY_URL:-http://scrobble-gateway:3001}

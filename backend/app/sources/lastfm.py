@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 # Last.fm の取り込みは scrobble-gateway に一本化した（2026-10-05）。
 # ここは Last.fm API を叩かず、scrobble-gateway の内部 REST から日ごとの再生件数
 # （UTC）だけを受け取って lastfm_daily_plays に入れる。scrobble の完全な履歴は
-# 持たない。旧実装（services/lastfm.py と lastfm_scrobbles）はロールバック期間が
-# 終わるまで残してある。
+# 持たない。旧実装（services/lastfm.py と lastfm_scrobbles）はロールバック期間
+# 終了後の 2026-11-25 に撤去した。
 
 
 class LastfmAdapter(SourceAdapter):
